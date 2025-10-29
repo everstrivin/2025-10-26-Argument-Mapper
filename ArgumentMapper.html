@@ -731,6 +731,11 @@ dialog textarea{ resize:vertical; }
 
     viewport._layers = layers;
     viewport._placeholders = placeholders;
+    
+    // Ensure viewport reference is properly accessible for drag-drop handlers
+    if (typeof window !== 'undefined') {
+      window.viewport = viewport;
+    }
   }
 
   // ---------- Tooltip ----------
