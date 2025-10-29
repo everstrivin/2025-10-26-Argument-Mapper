@@ -86,14 +86,17 @@ button.small{ padding:4px 8px; font-size:12px; }
 .segment{
   stroke:#fff; stroke-width:2;
   filter: none;
-  transition: transform .05s ease-out;
+  transform-origin: center;
+  transition: transform .2s ease-out, stroke-width .2s ease-out;
 }
 .segment.hover{
   stroke-width:3;
   filter:url(#dropGlow);
 }
 .segment.drop-target{
-  stroke:#111827; stroke-dasharray:6 4; stroke-width:2.5;
+  stroke:#111827; stroke-dasharray:6 4; stroke-width:3;
+  transform: scale(1.08);
+  transform-origin: center;
 }
 .segment.dragging{ opacity:.65; }
 
@@ -202,13 +205,16 @@ dialog textarea{ resize:vertical; }
   fill: none;
   opacity: 0.8;
   animation: pulse-placeholder 2s ease-in-out infinite;
+  transform-origin: center;
+  transition: transform 0.2s ease-out, stroke 0.2s ease-out, stroke-width 0.2s ease-out;
 }
 .segment.placeholder:hover,
 .segment.placeholder.drop-target{
   stroke: #059669;
-  stroke-width: 4;
+  stroke-width: 5;
   opacity: 1;
   animation: none;
+  transform: scale(1.1);
 }
 
 @keyframes pulse-placeholder {
@@ -223,6 +229,11 @@ dialog textarea{ resize:vertical; }
 .placeholder-icon:hover {
   animation: none;
   opacity: 1;
+}
+.segment.placeholder.drop-target + .placeholder-icon,
+.placeholder-icon.drop-target {
+  transform: scale(1.2);
+  transition: transform 0.2s ease-out;
 }
   </style>
 </head>
@@ -713,7 +724,8 @@ dialog textarea{ resize:vertical; }
         plusGroup.appendChild(hLine);
         
         viewport.appendChild(plusGroup);
-        // Don't add the icon to placeholders array since it's not used for hit detection
+        // Link the icon to the placeholder ring for hover effects
+        placeholderEl._plusIcon = plusGroup;
       }
     });
 
@@ -1333,15 +1345,21 @@ dialog textarea{ resize:vertical; }
 
   // ---------- Chunk -> Ring Drop ----------
   svg.addEventListener("dragover", (e)=>{
-    const chunkId = e.dataTransfer.getData("application/x-chunk-id");
-    if(!chunkId) return;
+    // Check if this is a chunk drag (can't use getData during dragover)
+    if(!e.dataTransfer.types.includes("application/x-chunk-id")) return;
     e.preventDefault();
     const pt = svgPoint(e);
     const target = pickSegmentAt(pt.x, pt.y);
+
     
     // Clear previous highlights
     if(viewport._lastChunkTarget && viewport._lastChunkTarget.el) viewport._lastChunkTarget.el.classList.remove("drop-target");
-    if(viewport._lastPlaceholderTarget) viewport._lastPlaceholderTarget.classList.remove("drop-target");
+    if(viewport._lastPlaceholderTarget) {
+      viewport._lastPlaceholderTarget.classList.remove("drop-target");
+      if(viewport._lastPlaceholderTarget._plusIcon) {
+        viewport._lastPlaceholderTarget._plusIcon.classList.remove("drop-target");
+      }
+    }
     
     // Highlight regular segments for sibling drop
     if(target){ 
@@ -1366,8 +1384,9 @@ dialog textarea{ resize:vertical; }
         const childRInner = r0 + (childDepth-1)*(ringWidth + ringGap);
         const childROuter = childRInner + ringWidth;
         
-        if(r >= childRInner && r <= childROuter && normAngle >= layout.a0 && normAngle <= layout.a1){
+        if(r >= childRInner && r <= childROuter + 1 && normAngle >= layout.a0 && normAngle <= layout.a1){
           ph.classList.add("drop-target");
+          if(ph._plusIcon) ph._plusIcon.classList.add("drop-target");
           hoveredPlaceholder = ph;
           break;
         }
@@ -1377,7 +1396,12 @@ dialog textarea{ resize:vertical; }
   });
   svg.addEventListener("dragleave", ()=>{
     if(viewport._lastChunkTarget && viewport._lastChunkTarget.el) viewport._lastChunkTarget.el.classList.remove("drop-target");
-    if(viewport._lastPlaceholderTarget) viewport._lastPlaceholderTarget.classList.remove("drop-target");
+    if(viewport._lastPlaceholderTarget) {
+      viewport._lastPlaceholderTarget.classList.remove("drop-target");
+      if(viewport._lastPlaceholderTarget._plusIcon) {
+        viewport._lastPlaceholderTarget._plusIcon.classList.remove("drop-target");
+      }
+    }
     viewport._lastChunkTarget = null;
     viewport._lastPlaceholderTarget = null;
   });
