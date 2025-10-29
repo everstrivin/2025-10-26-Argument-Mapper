@@ -1538,7 +1538,15 @@ dialog textarea{ resize:vertical; }
     const chunkId = e.dataTransfer.getData("application/x-chunk-id");
     const nodeId = e.dataTransfer.getData("application/x-node-id");
     
-    if(!chunkId && !nodeId) return;
+    console.log("=== SVG DROP EVENT ===");
+    console.log("chunkId:", chunkId);
+    console.log("nodeId:", nodeId);
+    console.log("dataTransfer.types:", e.dataTransfer.types);
+    
+    if(!chunkId && !nodeId) {
+      console.log("❌ No chunkId or nodeId found, returning early");
+      return;
+    }
     e.preventDefault();
 
     // Clear all highlights
@@ -1622,22 +1630,33 @@ dialog textarea{ resize:vertical; }
 
       // Check for placeholder drop (move as child)
       let placeholderTarget = viewport._lastPlaceholderTarget;
+      console.log("=== NODE DROP HANDLER ===");
+      console.log("Initial placeholderTarget:", placeholderTarget);
       
       // If no placeholder was detected during dragover, try to detect one now at drop coordinates
       if(!placeholderTarget) {
+        console.log("=== FALLBACK PLACEHOLDER DETECTION ===");
         // Use the same coordinate transformation as svgPoint
         const pt = svg.createSVGPoint();
         pt.x = e.clientX; pt.y = e.clientY;
         const inv = viewport.getScreenCTM().inverse();
         const svgPt = pt.matrixTransform(inv);
         
+        console.log("Drop coordinates:", e.clientX, e.clientY);
+        console.log("SVG coordinates:", svgPt.x, svgPt.y);
+        
         const layout = buildHierarchy(state.rootId);
         const r0 = ringWidth * 0.5;
+        
+        console.log("Ring geometry: r0 =", r0, "ringWidth =", ringWidth, "ringGap =", ringGap);
         
         // Check all childless nodes to see if drop coordinates match their placeholder rings
         for(const [parentId, l] of Object.entries(layout)) {
           const parentNode = state.nodes[parentId];
-          if(!parentNode.children || parentNode.children.length === 0) {
+          const hasChildren = parentNode.children && parentNode.children.length > 0;
+          console.log(`Checking node ${parentId}: depth=${l.depth}, hasChildren=${hasChildren}, a0=${l.a0}, a1=${l.a1}`);
+          
+          if(!hasChildren) {
             const childDepth = l.depth + 1;
             const childRInner = r0 + (childDepth-1)*(ringWidth + ringGap);
             const childROuter = childRInner + ringWidth;
@@ -1646,12 +1665,21 @@ dialog textarea{ resize:vertical; }
             const angle = Math.atan2(svgPt.y, svgPt.x);
             const normAngle = angle >= 0 ? angle : (2*Math.PI + angle);
             
+            console.log(`  Placeholder ring: childDepth=${childDepth}, rInner=${childRInner}, rOuter=${childROuter}`);
+            console.log(`  Drop point: r=${r}, angle=${normAngle}`);
+            console.log(`  Bounds check: r in [${childRInner}, ${childROuter + 1}] = ${r >= childRInner && r <= childROuter + 1}`);
+            console.log(`  Angle check: angle in [${l.a0}, ${l.a1}] = ${normAngle >= l.a0 && normAngle <= l.a1}`);
+            
             if(r >= childRInner && r <= childROuter + 1 && normAngle >= l.a0 && normAngle <= l.a1) {
               placeholderTarget = { _parentId: parentId };
-              console.log("Detected placeholder at drop time for parent:", parentId);
+              console.log("✅ DETECTED placeholder at drop time for parent:", parentId);
               break;
             }
           }
+        }
+        
+        if(!placeholderTarget) {
+          console.log("❌ No placeholder found at drop coordinates");
         }
       }
       
