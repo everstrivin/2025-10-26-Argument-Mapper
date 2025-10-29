@@ -777,19 +777,49 @@ dialog textarea{ resize:vertical; }
   // ---------- Segment Drag / Drop ----------
   let dragSeg = null;
   let dragOverTarget = null;
+  const DRAG_THRESHOLD = 8; // pixels - minimum distance to register as drag vs click
 
   function segmentDragStart(e){
     e.stopPropagation();
     const id = e.currentTarget.dataset.id;
-    dragSeg = { id, pointerId: e.pointerId };
+    const startX = e.clientX;
+    const startY = e.clientY;
+    
+    // Track initial pointer position but don't start dragging yet
+    dragSeg = { 
+      id, 
+      pointerId: e.pointerId, 
+      startX, 
+      startY, 
+      isDragging: false,
+      element: e.currentTarget
+    };
+    
     svg.setPointerCapture(e.pointerId);
-    e.currentTarget.classList.add("dragging");
     svg.addEventListener("pointermove", segmentDragMove);
     svg.addEventListener("pointerup", segmentDragEnd);
-    setStatus("Dragging segment…");
   }
   function segmentDragMove(e){
     if(!dragSeg) return;
+    
+    // Check if we've moved beyond the drag threshold
+    if(!dragSeg.isDragging) {
+      const dx = e.clientX - dragSeg.startX;
+      const dy = e.clientY - dragSeg.startY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      if(distance < DRAG_THRESHOLD) {
+        // Not yet dragging - still within click threshold
+        return;
+      }
+      
+      // Start actual dragging
+      dragSeg.isDragging = true;
+      dragSeg.element.classList.add("dragging");
+      setStatus("Dragging segment…");
+    }
+    
+    // Continue with drag operation
     const pt = svgPoint(e);
     const target = pickSegmentAt(pt.x, pt.y);
     updateDragVisual(target);
@@ -797,6 +827,23 @@ dialog textarea{ resize:vertical; }
   function segmentDragEnd(e){
     if(!dragSeg) return;
     svg.releasePointerCapture(dragSeg.pointerId);
+    
+    // Check if this was actually a drag or just a click
+    if(!dragSeg.isDragging) {
+      // This was a click, not a drag - manually trigger the click handler
+      const id = dragSeg.id;
+      const element = dragSeg.element;
+      svg.removeEventListener("pointermove", segmentDragMove);
+      svg.removeEventListener("pointerup", segmentDragEnd);
+      dragSeg = null;
+      
+      // Manually call the click handler logic
+      openEditModal(id);
+      focusNode(id);
+      return;
+    }
+    
+    // This was a drag - process the drop
     const sourceId = dragSeg.id;
     const pt = svgPoint(e);
     const target = pickSegmentAt(pt.x, pt.y);
@@ -806,7 +853,7 @@ dialog textarea{ resize:vertical; }
     svg.removeEventListener("pointermove", segmentDragMove);
     svg.removeEventListener("pointerup", segmentDragEnd);
 
-    if(!target){ setStatus("Ready"); return; }
+    if(!target){ setStatus("Ready"); dragSeg = null; return; }
 
     const src = state.nodes[sourceId];
     const srcDepth = getDepthOf(sourceId);
@@ -814,7 +861,7 @@ dialog textarea{ resize:vertical; }
     const tgtNode = state.nodes[target.id];
 
     if(target.id === sourceId || isDescendant(sourceId, target.id)){
-      toast("Invalid drop: cannot drop onto self/descendant","warn"); setStatus("Ready"); return;
+      toast("Invalid drop: cannot drop onto self/descendant","warn"); setStatus("Ready"); dragSeg = null; return;
     }
     if(tgtDepth === srcDepth){
       // Same ring - reorder as siblings
@@ -855,6 +902,7 @@ dialog textarea{ resize:vertical; }
       }
     }
     setStatus("Ready");
+    dragSeg = null;
     pushHistory(); renderAll();
   }
   function updateDragVisual(target){
@@ -1110,6 +1158,10 @@ dialog textarea{ resize:vertical; }
   }
 
   function renderTree(){
+    // Ensure focusId points to a valid node, otherwise reset to root
+    if(!state.nodes[state.focusId]){
+      state.focusId = state.rootId;
+    }
     const f = state.nodes[state.focusId];
 
     // Focus path
