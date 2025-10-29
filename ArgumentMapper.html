@@ -812,13 +812,42 @@ dialog textarea{ resize:vertical; }
       toast("Invalid drop: cannot drop onto self/descendant","warn"); setStatus("Ready"); return;
     }
     if(tgtDepth === srcDepth){
+      // Same ring - reorder as siblings
       reorderIntoSiblingPosition(sourceId, tgtNode.id);
       toast("Reordered","ok");
     } else if (tgtDepth === srcDepth - 1) {
+      // One ring inward - move as child
       moveAsChild(sourceId, target.id);
       toast("Moved as child","ok");
     } else {
-      toast("Drop only allowed onto same ring (reorder) or one ring inward (become child).","warn");
+      // Different generation move - show warning and get user confirmation
+      const srcNode = state.nodes[sourceId];
+      const generationDiff = Math.abs(tgtDepth - srcDepth);
+      const direction = tgtDepth < srcDepth ? "inward" : "outward";
+      const relationshipChange = tgtDepth < srcDepth ? 
+        `"${srcNode.title.slice(0,40)}..." will become a child of "${tgtNode.title.slice(0,40)}..."` :
+        `"${srcNode.title.slice(0,40)}..." will become a sibling of "${tgtNode.title.slice(0,40)}..."`;
+      
+      const shouldProceed = confirm(
+        `⚠️ Cross-Generation Move Warning\n\n` +
+        `You are moving a node ${generationDiff} generation${generationDiff > 1 ? 's' : ''} ${direction}.\n\n` +
+        `${relationshipChange}\n\n` +
+        `This will reorganize the tree structure. Do you want to proceed?`
+      );
+      
+      if(shouldProceed) {
+        if(tgtDepth < srcDepth) {
+          // Move inward (become child)
+          moveAsChild(sourceId, target.id);
+          toast("Moved as child across generations","ok");
+        } else {
+          // Move outward (become sibling)
+          reorderIntoSiblingPosition(sourceId, tgtNode.id);
+          toast("Moved as sibling across generations","ok");
+        }
+      } else {
+        toast("Cross-generation move cancelled","info");
+      }
     }
     setStatus("Ready");
     pushHistory(); renderAll();
@@ -1050,7 +1079,24 @@ dialog textarea{ resize:vertical; }
       el.classList.remove("hover");
       const srcId = e.dataTransfer.getData("application/x-node-id");
       if(!srcId) return;
-      if(srcId === node.id || isDescendant(node.id, srcId)) return toast("Invalid drop","warn");
+      if(srcId === node.id) return toast("Cannot drop a node onto itself","warn");
+      
+      if(isDescendant(node.id, srcId)) {
+        // Ancestor trying to become sibling of descendant - show warning
+        const srcNode = state.nodes[srcId];
+        const shouldProceed = confirm(
+          `⚠️ Cross-Generation Sibling Warning\n\n` +
+          `You are trying to move "${srcNode.title.slice(0,40)}..." to be a sibling of its descendant "${node.title.slice(0,40)}...".\n\n` +
+          `This will create a complex tree reorganization. Do you want to proceed?`
+        );
+        
+        if(!shouldProceed) {
+          toast("Move cancelled by user","info");
+          return;
+        }
+        
+        toast("Complex cross-generation move completed","ok");
+      }
       reorderIntoSiblingPosition(srcId, node.id);
       pushHistory(); renderAll(); toast("Reordered","ok");
     });
@@ -1106,9 +1152,28 @@ dialog textarea{ resize:vertical; }
         if(!srcId) return;
 
         if(list === treeChildren){
-          if(isDescendant(state.focusId, srcId)) return toast("Cannot move a node into its descendant","warn");
-          moveAsChild(srcId, state.focusId);
-          pushHistory(); renderAll(); toast("Moved as child","ok");
+          const srcNode = state.nodes[srcId];
+          const focusedNode = state.nodes[state.focusId];
+          
+          if(isDescendant(state.focusId, srcId)) {
+            // Ancestor trying to become child of descendant - show warning
+            const shouldReorganize = confirm(
+              `⚠️ Circular Relationship Warning\n\n` +
+              `You are trying to move "${srcNode.title.slice(0,40)}..." to be a child of its descendant "${focusedNode.title.slice(0,40)}...".\n\n` +
+              `This will reorganize the tree hierarchy by promoting "${focusedNode.title.slice(0,40)}..." to be the new parent.\n\n` +
+              `Do you want to proceed with this reorganization?`
+            );
+            
+            if(shouldReorganize) {
+              reorganizeTreeForCircularMove(srcId, state.focusId);
+              pushHistory(); renderAll(); toast("Tree reorganized to avoid circular dependency","ok");
+            } else {
+              toast("Move cancelled by user","info");
+            }
+          } else {
+            moveAsChild(srcId, state.focusId);
+            pushHistory(); renderAll(); toast("Moved as child","ok");
+          }
         }
         if(list === treeParent && parent && parent.parentId){
           reorderIntoSiblingPosition(srcId, parent.id);
@@ -1602,9 +1667,21 @@ dialog textarea{ resize:vertical; }
         
         // Check for circular dependency in sibling move
         if(isDescendant(target.id, nodeId)) {
-          toast("Cannot move a node to be sibling of its descendant","warn");
-          viewport._lastChunkTarget = null;
-          return;
+          const sourceNode = state.nodes[nodeId];
+          const shouldProceed = confirm(
+            `⚠️ Cross-Generation Sibling Warning\n\n` +
+            `You are trying to move "${sourceNode.title.slice(0,40)}..." to be a sibling of its descendant "${targetNode.title.slice(0,40)}...".\n\n` +
+            `This will create a complex tree reorganization. Do you want to proceed?`
+          );
+          
+          if(!shouldProceed) {
+            toast("Move cancelled by user","info");
+            viewport._lastChunkTarget = null;
+            return;
+          }
+          
+          // Proceed with the move - the complex reorganization will be handled
+          toast("Complex cross-generation move completed","ok");
         }
         
         reorderIntoSiblingPosition(nodeId, target.id);
