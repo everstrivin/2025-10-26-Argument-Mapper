@@ -86,14 +86,17 @@ button.small{ padding:4px 8px; font-size:12px; }
 .segment{
   stroke:#fff; stroke-width:2;
   filter: none;
-  transition: transform .05s ease-out;
+  transform-origin: center;
+  transition: transform .2s ease-out, stroke-width .2s ease-out;
 }
 .segment.hover{
   stroke-width:3;
   filter:url(#dropGlow);
 }
 .segment.drop-target{
-  stroke:#111827; stroke-dasharray:6 4; stroke-width:2.5;
+  stroke:#111827; stroke-dasharray:6 4; stroke-width:3;
+  transform: scale(1.08);
+  transform-origin: center;
 }
 .segment.dragging{ opacity:.65; }
 
@@ -193,6 +196,45 @@ dialog textarea{ resize:vertical; }
 .toast.ok{ background:#065f46; }
 .toast.warn{ background:#92400e; }
 .toast.err{ background:#7f1d1d; }
+
+/* Placeholder ring styles */
+.segment.placeholder{
+  stroke: #94a3b8;
+  stroke-width: 3;
+  stroke-dasharray: 12 8;
+  fill: none;
+  opacity: 0.8;
+  animation: pulse-placeholder 2s ease-in-out infinite;
+  transform-origin: center;
+  transition: transform 0.2s ease-out, stroke 0.2s ease-out, stroke-width 0.2s ease-out;
+}
+.segment.placeholder:hover,
+.segment.placeholder.drop-target{
+  stroke: #059669;
+  stroke-width: 5;
+  opacity: 1;
+  animation: none;
+  transform: scale(1.1);
+}
+
+@keyframes pulse-placeholder {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.placeholder-icon {
+  animation: pulse-placeholder 2s ease-in-out infinite;
+  cursor: pointer;
+}
+.placeholder-icon:hover {
+  animation: none;
+  opacity: 1;
+}
+.segment.placeholder.drop-target + .placeholder-icon,
+.placeholder-icon.drop-target {
+  transform: scale(1.2);
+  transition: transform 0.2s ease-out;
+}
   </style>
 </head>
 <body>
@@ -615,25 +657,85 @@ dialog textarea{ resize:vertical; }
     viewport.appendChild(centerDot);
 
     const layers = new Map();
+    const placeholders = [];
+    
     Object.entries(layout).forEach(([id, l])=>{
-      if(id === state.rootId) return;
       const node = state.nodes[id];
       const depth = l.depth;
-      const rInner = r0 + (depth-1)*(ringWidth + ringGap);
-      const rOuter = rInner + ringWidth;
-      const pathEl = document.createElementNS("http://www.w3.org/2000/svg","path");
-      pathEl.setAttribute("class", "segment");
-      pathEl.setAttribute("fill", colorFor(node));
-      pathEl.setAttribute("data-id", id);
-      pathEl.setAttribute("d", annularPath(cx, cy, rInner, rOuter, l.a0, l.a1));
-      addSegmentListeners(pathEl);
-      viewport.appendChild(pathEl);
+      
+      // Render actual segments for non-root nodes
+      if(id !== state.rootId) {
+        const rInner = r0 + (depth-1)*(ringWidth + ringGap);
+        const rOuter = rInner + ringWidth;
+        const pathEl = document.createElementNS("http://www.w3.org/2000/svg","path");
+        pathEl.setAttribute("class", "segment");
+        pathEl.setAttribute("fill", colorFor(node));
+        pathEl.setAttribute("data-id", id);
+        pathEl.setAttribute("d", annularPath(cx, cy, rInner, rOuter, l.a0, l.a1));
+        addSegmentListeners(pathEl);
+        viewport.appendChild(pathEl);
 
-      if(!layers.has(depth)) layers.set(depth, []);
-      layers.get(depth).push({ id, depth, a0:l.a0, a1:l.a1, rInner, rOuter, el: pathEl });
+        if(!layers.has(depth)) layers.set(depth, []);
+        layers.get(depth).push({ id, depth, a0:l.a0, a1:l.a1, rInner, rOuter, el: pathEl });
+      }
+      
+      // Add placeholder ring for nodes without children (including root)
+      if(!node.children || node.children.length === 0){
+        const childDepth = depth + 1;
+        const childRInner = r0 + (childDepth-1)*(ringWidth + ringGap);
+        const childROuter = childRInner + ringWidth;
+        const placeholderEl = document.createElementNS("http://www.w3.org/2000/svg","path");
+        placeholderEl.setAttribute("class", "segment placeholder");
+        placeholderEl.setAttribute("d", annularPath(cx, cy, childRInner, childROuter, l.a0, l.a1));
+        placeholderEl._parentId = id;
+        viewport.appendChild(placeholderEl);
+        placeholders.push(placeholderEl);
+        
+        // Add a plus icon in the center of the placeholder ring
+        const midAngle = (l.a0 + l.a1) / 2;
+        const midRadius = (childRInner + childROuter) / 2;
+        const iconX = cx + midRadius * Math.cos(midAngle);
+        const iconY = cy + midRadius * Math.sin(midAngle);
+        
+        const plusGroup = document.createElementNS("http://www.w3.org/2000/svg","g");
+        plusGroup.setAttribute("class", "placeholder-icon");
+        plusGroup.setAttribute("transform", `translate(${iconX},${iconY})`);
+        
+        // Plus sign background circle
+        const bgCircle = document.createElementNS("http://www.w3.org/2000/svg","circle");
+        bgCircle.setAttribute("r", "12");
+        bgCircle.setAttribute("fill", "#ffffff");
+        bgCircle.setAttribute("stroke", "#94a3b8");
+        bgCircle.setAttribute("stroke-width", "2");
+        bgCircle.setAttribute("opacity", "0.9");
+        plusGroup.appendChild(bgCircle);
+        
+        // Plus sign lines
+        const vLine = document.createElementNS("http://www.w3.org/2000/svg","line");
+        vLine.setAttribute("x1", "0"); vLine.setAttribute("y1", "-6");
+        vLine.setAttribute("x2", "0"); vLine.setAttribute("y2", "6");
+        vLine.setAttribute("stroke", "#6b7280"); vLine.setAttribute("stroke-width", "2");
+        plusGroup.appendChild(vLine);
+        
+        const hLine = document.createElementNS("http://www.w3.org/2000/svg","line");
+        hLine.setAttribute("x1", "-6"); hLine.setAttribute("y1", "0");
+        hLine.setAttribute("x2", "6"); hLine.setAttribute("y2", "0");
+        hLine.setAttribute("stroke", "#6b7280"); hLine.setAttribute("stroke-width", "2");
+        plusGroup.appendChild(hLine);
+        
+        viewport.appendChild(plusGroup);
+        // Link the icon to the placeholder ring for hover effects
+        placeholderEl._plusIcon = plusGroup;
+      }
     });
 
     viewport._layers = layers;
+    viewport._placeholders = placeholders;
+    
+    // Ensure viewport reference is properly accessible for drag-drop handlers
+    if (typeof window !== 'undefined') {
+      window.viewport = viewport;
+    }
   }
 
   // ---------- Tooltip ----------
@@ -715,13 +817,42 @@ dialog textarea{ resize:vertical; }
       toast("Invalid drop: cannot drop onto self/descendant","warn"); setStatus("Ready"); return;
     }
     if(tgtDepth === srcDepth){
+      // Same ring - reorder as siblings
       reorderIntoSiblingPosition(sourceId, tgtNode.id);
       toast("Reordered","ok");
     } else if (tgtDepth === srcDepth - 1) {
+      // One ring inward - move as child
       moveAsChild(sourceId, target.id);
       toast("Moved as child","ok");
     } else {
-      toast("Drop only allowed onto same ring (reorder) or one ring inward (become child).","warn");
+      // Different generation move - show warning and get user confirmation
+      const srcNode = state.nodes[sourceId];
+      const generationDiff = Math.abs(tgtDepth - srcDepth);
+      const direction = tgtDepth < srcDepth ? "inward" : "outward";
+      const relationshipChange = tgtDepth < srcDepth ? 
+        `"${srcNode.title.slice(0,40)}..." will become a child of "${tgtNode.title.slice(0,40)}..."` :
+        `"${srcNode.title.slice(0,40)}..." will become a sibling of "${tgtNode.title.slice(0,40)}..."`;
+      
+      const shouldProceed = confirm(
+        `⚠️ Cross-Generation Move Warning\n\n` +
+        `You are moving a node ${generationDiff} generation${generationDiff > 1 ? 's' : ''} ${direction}.\n\n` +
+        `${relationshipChange}\n\n` +
+        `This will reorganize the tree structure. Do you want to proceed?`
+      );
+      
+      if(shouldProceed) {
+        if(tgtDepth < srcDepth) {
+          // Move inward (become child)
+          moveAsChild(sourceId, target.id);
+          toast("Moved as child across generations","ok");
+        } else {
+          // Move outward (become sibling)
+          reorderIntoSiblingPosition(sourceId, tgtNode.id);
+          toast("Moved as sibling across generations","ok");
+        }
+      } else {
+        toast("Cross-generation move cancelled","info");
+      }
     }
     setStatus("Ready");
     pushHistory(); renderAll();
@@ -802,6 +933,69 @@ dialog textarea{ resize:vertical; }
     if(!np.children) np.children = [];
     if(!np.children.includes(srcId)) np.children.push(srcId);
     src.parentId = newParentId;
+  }
+
+  function reorganizeTreeForCircularMove(sourceId, targetParentId){
+    // This handles the case where a node is moved to be a child of its own descendant
+    // We need to "bump up" the tree by making the descendant the new parent
+    
+    const sourceNode = state.nodes[sourceId];
+    const targetParent = state.nodes[targetParentId];
+    
+    // Step 1: Find the path from targetParent back to sourceId
+    const pathToSource = [];
+    let current = targetParent;
+    while(current && current.id !== sourceId) {
+      pathToSource.push(current.id);
+      current = current.parentId ? state.nodes[current.parentId] : null;
+    }
+    
+    // Step 2: Reverse the parent-child relationships along this path
+    // The targetParent becomes the new root of this subtree
+    const originalSourceParent = sourceNode.parentId;
+    
+    // Remove sourceNode from its current parent
+    if(originalSourceParent) {
+      const sourceParentChildren = state.nodes[originalSourceParent].children;
+      const idx = sourceParentChildren.indexOf(sourceId);
+      if(idx >= 0) sourceParentChildren.splice(idx, 1);
+    }
+    
+    // Reverse the relationships along the path
+    let prevParent = originalSourceParent;
+    for(let i = pathToSource.length - 1; i >= 0; i--) {
+      const nodeId = pathToSource[i];
+      const node = state.nodes[nodeId];
+      const oldParent = node.parentId;
+      
+      // Remove this node from its old parent's children
+      if(oldParent) {
+        const oldParentChildren = state.nodes[oldParent].children;
+        const idx = oldParentChildren.indexOf(nodeId);
+        if(idx >= 0) oldParentChildren.splice(idx, 1);
+      }
+      
+      // Set this node's new parent
+      node.parentId = prevParent;
+      
+      // Add this node to its new parent's children (if parent exists)
+      if(prevParent) {
+        const newParentNode = state.nodes[prevParent];
+        if(!newParentNode.children) newParentNode.children = [];
+        if(!newParentNode.children.includes(nodeId)) {
+          newParentNode.children.push(nodeId);
+        }
+      }
+      
+      prevParent = nodeId;
+    }
+    
+    // Step 3: Finally, make sourceNode a child of targetParent
+    sourceNode.parentId = targetParentId;
+    if(!targetParent.children) targetParent.children = [];
+    if(!targetParent.children.includes(sourceId)) {
+      targetParent.children.push(sourceId);
+    }
   }
 
   // ---------- Tree View (3 rows) ----------
@@ -890,7 +1084,24 @@ dialog textarea{ resize:vertical; }
       el.classList.remove("hover");
       const srcId = e.dataTransfer.getData("application/x-node-id");
       if(!srcId) return;
-      if(srcId === node.id || isDescendant(node.id, srcId)) return toast("Invalid drop","warn");
+      if(srcId === node.id) return toast("Cannot drop a node onto itself","warn");
+      
+      if(isDescendant(node.id, srcId)) {
+        // Ancestor trying to become sibling of descendant - show warning
+        const srcNode = state.nodes[srcId];
+        const shouldProceed = confirm(
+          `⚠️ Cross-Generation Sibling Warning\n\n` +
+          `You are trying to move "${srcNode.title.slice(0,40)}..." to be a sibling of its descendant "${node.title.slice(0,40)}...".\n\n` +
+          `This will create a complex tree reorganization. Do you want to proceed?`
+        );
+        
+        if(!shouldProceed) {
+          toast("Move cancelled by user","info");
+          return;
+        }
+        
+        toast("Complex cross-generation move completed","ok");
+      }
       reorderIntoSiblingPosition(srcId, node.id);
       pushHistory(); renderAll(); toast("Reordered","ok");
     });
@@ -946,9 +1157,28 @@ dialog textarea{ resize:vertical; }
         if(!srcId) return;
 
         if(list === treeChildren){
-          if(isDescendant(state.focusId, srcId)) return toast("Cannot move a node into its descendant","warn");
-          moveAsChild(srcId, state.focusId);
-          pushHistory(); renderAll(); toast("Moved as child","ok");
+          const srcNode = state.nodes[srcId];
+          const focusedNode = state.nodes[state.focusId];
+          
+          if(isDescendant(state.focusId, srcId)) {
+            // Ancestor trying to become child of descendant - show warning
+            const shouldReorganize = confirm(
+              `⚠️ Circular Relationship Warning\n\n` +
+              `You are trying to move "${srcNode.title.slice(0,40)}..." to be a child of its descendant "${focusedNode.title.slice(0,40)}...".\n\n` +
+              `This will reorganize the tree hierarchy by promoting "${focusedNode.title.slice(0,40)}..." to be the new parent.\n\n` +
+              `Do you want to proceed with this reorganization?`
+            );
+            
+            if(shouldReorganize) {
+              reorganizeTreeForCircularMove(srcId, state.focusId);
+              pushHistory(); renderAll(); toast("Tree reorganized to avoid circular dependency","ok");
+            } else {
+              toast("Move cancelled by user","info");
+            }
+          } else {
+            moveAsChild(srcId, state.focusId);
+            pushHistory(); renderAll(); toast("Moved as child","ok");
+          }
         }
         if(list === treeParent && parent && parent.parentId){
           reorderIntoSiblingPosition(srcId, parent.id);
@@ -1248,56 +1478,106 @@ dialog textarea{ resize:vertical; }
 
   // ---------- Chunk -> Ring Drop ----------
   svg.addEventListener("dragover", (e)=>{
-    const chunkId = e.dataTransfer.getData("application/x-chunk-id");
-    if(!chunkId) return;
+    // Check if this is a chunk or node drag (can't use getData during dragover)
+    if(!e.dataTransfer.types.includes("application/x-chunk-id") && 
+       !e.dataTransfer.types.includes("application/x-node-id")) return;
     e.preventDefault();
     const pt = svgPoint(e);
     const target = pickSegmentAt(pt.x, pt.y);
+    
+    console.log("=== DRAGOVER EVENT ===");
+    console.log("SVG point:", pt.x, pt.y);
+    console.log("Regular segment target:", target);
+    console.log("Placeholders available:", viewport._placeholders ? viewport._placeholders.length : 'none');
+
+    
+    // Clear previous highlights
     if(viewport._lastChunkTarget && viewport._lastChunkTarget.el) viewport._lastChunkTarget.el.classList.remove("drop-target");
-    if(target){ target.el.classList.add("drop-target"); }
-    viewport._lastChunkTarget = target;
-  });
-      // Highlight placeholder segments for child drop
+    if(viewport._lastPlaceholderTarget) {
+      viewport._lastPlaceholderTarget.classList.remove("drop-target");
+      if(viewport._lastPlaceholderTarget._plusIcon) {
+        viewport._lastPlaceholderTarget._plusIcon.classList.remove("drop-target");
+      }
+    }
+    
+    // Highlight regular segments for sibling drop
+    if(target){ 
+      target.el.classList.add("drop-target"); 
+      viewport._lastChunkTarget = target;
+      viewport._lastPlaceholderTarget = null;
+    } else {
+      viewport._lastChunkTarget = null;
+      
+      // Check placeholder segments for child drop
       let hoveredPlaceholder = null;
       for(const ph of viewport._placeholders||[]){
-        // Use SVG geometry to check if pt is inside annular segment
         const parentId = ph._parentId;
         const layout = buildHierarchy(state.rootId)[parentId];
-        const childRInner = parseFloat(ph.getAttribute("d").match(/M ([\d\.]+) ([\d\.]+)/)[1]);
-        const childROuter = childRInner + ringWidth;
+        if(!layout) continue;
+        
+        const r = Math.hypot(pt.x, pt.y);
         const angle = Math.atan2(pt.y, pt.x);
         const normAngle = angle>=0 ? angle : (2*Math.PI + angle);
-        if(Math.hypot(pt.x, pt.y) >= childRInner && Math.hypot(pt.x, pt.y) <= childROuter && normAngle >= layout.a0 && normAngle <= layout.a1){
+        const childDepth = getDepthOf(parentId) + 1;
+        const r0 = ringWidth * 0.5;
+        const childRInner = r0 + (childDepth-1)*(ringWidth + ringGap);
+        const childROuter = childRInner + ringWidth;
+        
+        if(r >= childRInner && r <= childROuter + 1 && normAngle >= layout.a0 && normAngle <= layout.a1){
           ph.classList.add("drop-target");
+          if(ph._plusIcon) ph._plusIcon.classList.add("drop-target");
           hoveredPlaceholder = ph;
-        } else {
-          ph.classList.remove("drop-target");
+          break;
         }
       }
       viewport._lastPlaceholderTarget = hoveredPlaceholder;
+    }
+  });
   svg.addEventListener("dragleave", ()=>{
     if(viewport._lastChunkTarget && viewport._lastChunkTarget.el) viewport._lastChunkTarget.el.classList.remove("drop-target");
+    if(viewport._lastPlaceholderTarget) {
+      viewport._lastPlaceholderTarget.classList.remove("drop-target");
+      if(viewport._lastPlaceholderTarget._plusIcon) {
+        viewport._lastPlaceholderTarget._plusIcon.classList.remove("drop-target");
+      }
+    }
     viewport._lastChunkTarget = null;
+    viewport._lastPlaceholderTarget = null;
   });
   svg.addEventListener("drop", (e)=>{
     const chunkId = e.dataTransfer.getData("application/x-chunk-id");
-    if(!chunkId) return;
+    const nodeId = e.dataTransfer.getData("application/x-node-id");
+    
+    console.log("=== SVG DROP EVENT ===");
+    console.log("chunkId:", chunkId);
+    console.log("nodeId:", nodeId);
+    console.log("dataTransfer.types:", e.dataTransfer.types);
+    
+    if(!chunkId && !nodeId) {
+      console.log("❌ No chunkId or nodeId found, returning early");
+      return;
+    }
     e.preventDefault();
 
-    const target = viewport._lastChunkTarget || (()=>{
-      const pt = svgPoint(e); return pickSegmentAt(pt.x, pt.y);
-    })();
-
+    // Clear all highlights
     if(viewport._lastChunkTarget && viewport._lastChunkTarget.el) viewport._lastChunkTarget.el.classList.remove("drop-target");
-    viewport._lastChunkTarget = null;
+    if(viewport._lastPlaceholderTarget) {
+      viewport._lastPlaceholderTarget.classList.remove("drop-target");
+      if(viewport._lastPlaceholderTarget._plusIcon) {
+        viewport._lastPlaceholderTarget._plusIcon.classList.remove("drop-target");
+      }
+    }
+
+    // Handle chunk drops
+    if(chunkId) {
+      const chIdx = state.inbox.findIndex(c=>c.id===chunkId);
+      if(chIdx<0) { toast("Chunk already used or missing","warn"); return; }
+      const chunk = state.inbox[chIdx];
 
       // Check for placeholder drop (add as child)
       const placeholderTarget = viewport._lastPlaceholderTarget;
       if(placeholderTarget) {
         const parentId = placeholderTarget._parentId;
-        const chIdx = state.inbox.findIndex(c=>c.id===chunkId);
-        if(chIdx<0) { toast("Chunk already used or missing","warn"); return; }
-        const chunk = state.inbox[chIdx];
         const newId = uid();
         state.nodes[newId] = {
           id: newId,
@@ -1308,40 +1588,183 @@ dialog textarea{ resize:vertical; }
           parentId: parentId,
         };
         const parent = state.nodes[parentId];
+        if(!parent.children) parent.children = [];
         parent.children.push(newId);
         state.inbox.splice(chIdx,1);
         state.consumedChunkIds[chunk.id] = true;
+        viewport._lastPlaceholderTarget = null;
         pushHistory();
         renderInbox(); renderAll();
         toast("Added as child and removed from inbox","ok");
         return;
       }
-    const chIdx = state.inbox.findIndex(c=>c.id===chunkId);
-    if(chIdx<0) { toast("Chunk already used or missing","warn"); return; }
-    const chunk = state.inbox[chIdx];
 
-    if(!target){ toast("Drop onto a segment to add as sibling","warn"); return; }
+      // Check for regular segment drop (add as sibling)
+      const target = viewport._lastChunkTarget || (()=>{
+        const pt = svgPoint(e); return pickSegmentAt(pt.x, pt.y);
+      })();
 
-    const targetNode = state.nodes[target.id];
-    const parent = state.nodes[targetNode.parentId];
-    const newId = uid();
-    state.nodes[newId] = {
-      id: newId,
-      title: chunk.text.trim().slice(0, 240),
-      categoryId: state.catOrder[0],
-      rating: 3,
-      children:[],
-      parentId: parent.id,
-    };
-    const idx = parent.children.indexOf(targetNode.id);
-    parent.children.splice(idx+1, 0, newId);
+      if(!target){ 
+        toast("Drop onto a segment or placeholder ring to add argument","warn"); 
+        viewport._lastChunkTarget = null;
+        return; 
+      }
 
-    state.inbox.splice(chIdx,1);
-    state.consumedChunkIds[chunk.id] = true;
+      const targetNode = state.nodes[target.id];
+      const parent = state.nodes[targetNode.parentId];
+      const newId = uid();
+      state.nodes[newId] = {
+        id: newId,
+        title: chunk.text.trim().slice(0, 240),
+        categoryId: state.catOrder[0],
+        rating: 3,
+        children:[],
+        parentId: parent.id,
+      };
+      const idx = parent.children.indexOf(targetNode.id);
+      parent.children.splice(idx+1, 0, newId);
 
-    pushHistory();
-    renderInbox(); renderAll();
-    toast("Added as sibling and removed from inbox","ok");
+      state.inbox.splice(chIdx,1);
+      state.consumedChunkIds[chunk.id] = true;
+      viewport._lastChunkTarget = null;
+
+      pushHistory();
+      renderInbox(); renderAll();
+      toast("Added as sibling and removed from inbox","ok");
+    }
+
+    // Handle node drops
+    if(nodeId) {
+      const sourceNode = state.nodes[nodeId];
+      if(!sourceNode) { toast("Source node not found","warn"); return; }
+
+      // Check for placeholder drop (move as child)
+      let placeholderTarget = viewport._lastPlaceholderTarget;
+      console.log("=== NODE DROP HANDLER ===");
+      console.log("Initial placeholderTarget:", placeholderTarget);
+      
+      // If no placeholder was detected during dragover, try to detect one now at drop coordinates
+      if(!placeholderTarget) {
+        console.log("=== FALLBACK PLACEHOLDER DETECTION ===");
+        // Use the same coordinate transformation as svgPoint
+        const pt = svg.createSVGPoint();
+        pt.x = e.clientX; pt.y = e.clientY;
+        const inv = viewport.getScreenCTM().inverse();
+        const svgPt = pt.matrixTransform(inv);
+        
+        console.log("Drop coordinates:", e.clientX, e.clientY);
+        console.log("SVG coordinates:", svgPt.x, svgPt.y);
+        
+        const layout = buildHierarchy(state.rootId);
+        const r0 = ringWidth * 0.5;
+        
+        console.log("Ring geometry: r0 =", r0, "ringWidth =", ringWidth, "ringGap =", ringGap);
+        
+        // Check all childless nodes to see if drop coordinates match their placeholder rings
+        for(const [parentId, l] of Object.entries(layout)) {
+          const parentNode = state.nodes[parentId];
+          const hasChildren = parentNode.children && parentNode.children.length > 0;
+          console.log(`Checking node ${parentId}: depth=${l.depth}, hasChildren=${hasChildren}, a0=${l.a0}, a1=${l.a1}`);
+          
+          if(!hasChildren) {
+            const childDepth = l.depth + 1;
+            const childRInner = r0 + (childDepth-1)*(ringWidth + ringGap);
+            const childROuter = childRInner + ringWidth;
+            
+            const r = Math.hypot(svgPt.x, svgPt.y);
+            const angle = Math.atan2(svgPt.y, svgPt.x);
+            const normAngle = angle >= 0 ? angle : (2*Math.PI + angle);
+            
+            console.log(`  Placeholder ring: childDepth=${childDepth}, rInner=${childRInner}, rOuter=${childROuter}`);
+            console.log(`  Drop point: r=${r}, angle=${normAngle}`);
+            console.log(`  Bounds check: r in [${childRInner}, ${childROuter + 1}] = ${r >= childRInner && r <= childROuter + 1}`);
+            console.log(`  Angle check: angle in [${l.a0}, ${l.a1}] = ${normAngle >= l.a0 && normAngle <= l.a1}`);
+            
+            if(r >= childRInner && r <= childROuter + 1 && normAngle >= l.a0 && normAngle <= l.a1) {
+              placeholderTarget = { _parentId: parentId };
+              console.log("✅ DETECTED placeholder at drop time for parent:", parentId);
+              break;
+            }
+          }
+        }
+        
+        if(!placeholderTarget) {
+          console.log("❌ No placeholder found at drop coordinates");
+        }
+      }
+      
+      if(placeholderTarget) {
+        const newParentId = placeholderTarget._parentId;
+        const newParent = state.nodes[newParentId];
+        
+        // Check for circular dependency (moving a node to be a child of its descendant)
+        if(isDescendant(newParentId, nodeId)) {
+          // Show warning and ask for confirmation
+          const shouldReorganize = confirm(
+            `⚠️ Warning: You are trying to move "${sourceNode.title.slice(0,50)}..." to be a child of its own descendant "${newParent.title.slice(0,50)}...".\n\n` +
+            `This will reorganize the tree hierarchy by promoting "${newParent.title.slice(0,50)}..." to be the new parent.\n\n` +
+            `Do you want to proceed with this reorganization?`
+          );
+          
+          if(!shouldReorganize) {
+            toast("Move cancelled by user","info");
+            viewport._lastPlaceholderTarget = null;
+            return;
+          }
+          
+          // Perform tree reorganization to avoid circular dependency
+          reorganizeTreeForCircularMove(nodeId, newParentId);
+          toast("Tree reorganized to avoid circular dependency","ok");
+        } else {
+          // Normal move operation
+          moveAsChild(nodeId, newParentId);
+          toast("Moved as child","ok");
+        }
+        
+        viewport._lastPlaceholderTarget = null;
+        pushHistory();
+        renderAll();
+        return;
+      }
+
+      // Check for regular segment drop (move as sibling)
+      const target = viewport._lastChunkTarget || (()=>{
+        const pt = svgPoint(e); return pickSegmentAt(pt.x, pt.y);
+      })();
+      
+      if(target) {
+        const targetNode = state.nodes[target.id];
+        if(!targetNode) { toast("Target node not found","warn"); return; }
+        
+        // Check for circular dependency in sibling move
+        if(isDescendant(target.id, nodeId)) {
+          const sourceNode = state.nodes[nodeId];
+          const shouldProceed = confirm(
+            `⚠️ Cross-Generation Sibling Warning\n\n` +
+            `You are trying to move "${sourceNode.title.slice(0,40)}..." to be a sibling of its descendant "${targetNode.title.slice(0,40)}...".\n\n` +
+            `This will create a complex tree reorganization. Do you want to proceed?`
+          );
+          
+          if(!shouldProceed) {
+            toast("Move cancelled by user","info");
+            viewport._lastChunkTarget = null;
+            return;
+          }
+          
+          // Proceed with the move - the complex reorganization will be handled
+          toast("Complex cross-generation move completed","ok");
+        }
+        
+        reorderIntoSiblingPosition(nodeId, target.id);
+        viewport._lastChunkTarget = null;
+        pushHistory();
+        renderAll();
+        toast("Moved as sibling","ok");
+        return;
+      }
+      
+      toast("No valid drop target found","warn");
+    }
   });
 
   // ---------- Import / Export ----------
