@@ -1479,6 +1479,11 @@ dialog textarea{ resize:vertical; }
     e.preventDefault();
     const pt = svgPoint(e);
     const target = pickSegmentAt(pt.x, pt.y);
+    
+    console.log("=== DRAGOVER EVENT ===");
+    console.log("SVG point:", pt.x, pt.y);
+    console.log("Regular segment target:", target);
+    console.log("Placeholders available:", viewport._placeholders ? viewport._placeholders.length : 'none');
 
     
     // Clear previous highlights
