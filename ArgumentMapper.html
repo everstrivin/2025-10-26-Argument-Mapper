@@ -830,10 +830,16 @@ dialog textarea{ resize:vertical; }
     
     // Check if this was actually a drag or just a click
     if(!dragSeg.isDragging) {
-      // This was a click, not a drag - let the normal click handler process it
+      // This was a click, not a drag - manually trigger the click handler
+      const id = dragSeg.id;
+      const element = dragSeg.element;
       svg.removeEventListener("pointermove", segmentDragMove);
       svg.removeEventListener("pointerup", segmentDragEnd);
       dragSeg = null;
+      
+      // Manually call the click handler logic
+      openEditModal(id);
+      focusNode(id);
       return;
     }
     
