@@ -1152,6 +1152,10 @@ dialog textarea{ resize:vertical; }
   }
 
   function renderTree(){
+    // Ensure focusId points to a valid node, otherwise reset to root
+    if(!state.nodes[state.focusId]){
+      state.focusId = state.rootId;
+    }
     const f = state.nodes[state.focusId];
 
     // Focus path
