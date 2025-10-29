@@ -615,25 +615,49 @@ dialog textarea{ resize:vertical; }
     viewport.appendChild(centerDot);
 
     const layers = new Map();
+    const placeholders = [];
+    
     Object.entries(layout).forEach(([id, l])=>{
-      if(id === state.rootId) return;
       const node = state.nodes[id];
       const depth = l.depth;
-      const rInner = r0 + (depth-1)*(ringWidth + ringGap);
-      const rOuter = rInner + ringWidth;
-      const pathEl = document.createElementNS("http://www.w3.org/2000/svg","path");
-      pathEl.setAttribute("class", "segment");
-      pathEl.setAttribute("fill", colorFor(node));
-      pathEl.setAttribute("data-id", id);
-      pathEl.setAttribute("d", annularPath(cx, cy, rInner, rOuter, l.a0, l.a1));
-      addSegmentListeners(pathEl);
-      viewport.appendChild(pathEl);
+      
+      // Render actual segments for non-root nodes
+      if(id !== state.rootId) {
+        const rInner = r0 + (depth-1)*(ringWidth + ringGap);
+        const rOuter = rInner + ringWidth;
+        const pathEl = document.createElementNS("http://www.w3.org/2000/svg","path");
+        pathEl.setAttribute("class", "segment");
+        pathEl.setAttribute("fill", colorFor(node));
+        pathEl.setAttribute("data-id", id);
+        pathEl.setAttribute("d", annularPath(cx, cy, rInner, rOuter, l.a0, l.a1));
+        addSegmentListeners(pathEl);
+        viewport.appendChild(pathEl);
 
-      if(!layers.has(depth)) layers.set(depth, []);
-      layers.get(depth).push({ id, depth, a0:l.a0, a1:l.a1, rInner, rOuter, el: pathEl });
+        if(!layers.has(depth)) layers.set(depth, []);
+        layers.get(depth).push({ id, depth, a0:l.a0, a1:l.a1, rInner, rOuter, el: pathEl });
+      }
+      
+      // Add placeholder ring for nodes without children (including root)
+      if(!node.children || node.children.length === 0){
+        const childDepth = depth + 1;
+        const childRInner = r0 + (childDepth-1)*(ringWidth + ringGap);
+        const childROuter = childRInner + ringWidth;
+        const placeholderEl = document.createElementNS("http://www.w3.org/2000/svg","path");
+        placeholderEl.setAttribute("class", "segment placeholder");
+        placeholderEl.setAttribute("fill", "none");
+        placeholderEl.setAttribute("stroke", "#e2e8f0");
+        placeholderEl.setAttribute("stroke-width", "2");
+        placeholderEl.setAttribute("stroke-dasharray", "8 4");
+        placeholderEl.setAttribute("opacity", "0.6");
+        placeholderEl.setAttribute("d", annularPath(cx, cy, childRInner, childROuter, l.a0, l.a1));
+        placeholderEl._parentId = id;
+        viewport.appendChild(placeholderEl);
+        placeholders.push(placeholderEl);
+      }
     });
 
     viewport._layers = layers;
+    viewport._placeholders = placeholders;
   }
 
   // ---------- Tooltip ----------
@@ -1253,74 +1277,97 @@ dialog textarea{ resize:vertical; }
     e.preventDefault();
     const pt = svgPoint(e);
     const target = pickSegmentAt(pt.x, pt.y);
+    
+    // Clear previous highlights
     if(viewport._lastChunkTarget && viewport._lastChunkTarget.el) viewport._lastChunkTarget.el.classList.remove("drop-target");
-    if(target){ target.el.classList.add("drop-target"); }
-    viewport._lastChunkTarget = target;
-  });
-      // Highlight placeholder segments for child drop
+    if(viewport._lastPlaceholderTarget) viewport._lastPlaceholderTarget.classList.remove("drop-target");
+    
+    // Highlight regular segments for sibling drop
+    if(target){ 
+      target.el.classList.add("drop-target"); 
+      viewport._lastChunkTarget = target;
+      viewport._lastPlaceholderTarget = null;
+    } else {
+      viewport._lastChunkTarget = null;
+      
+      // Check placeholder segments for child drop
       let hoveredPlaceholder = null;
       for(const ph of viewport._placeholders||[]){
-        // Use SVG geometry to check if pt is inside annular segment
         const parentId = ph._parentId;
         const layout = buildHierarchy(state.rootId)[parentId];
-        const childRInner = parseFloat(ph.getAttribute("d").match(/M ([\d\.]+) ([\d\.]+)/)[1]);
-        const childROuter = childRInner + ringWidth;
+        if(!layout) continue;
+        
+        const r = Math.hypot(pt.x, pt.y);
         const angle = Math.atan2(pt.y, pt.x);
         const normAngle = angle>=0 ? angle : (2*Math.PI + angle);
-        if(Math.hypot(pt.x, pt.y) >= childRInner && Math.hypot(pt.x, pt.y) <= childROuter && normAngle >= layout.a0 && normAngle <= layout.a1){
+        const childDepth = getDepthOf(parentId) + 1;
+        const r0 = ringWidth * 0.5;
+        const childRInner = r0 + (childDepth-1)*(ringWidth + ringGap);
+        const childROuter = childRInner + ringWidth;
+        
+        if(r >= childRInner && r <= childROuter && normAngle >= layout.a0 && normAngle <= layout.a1){
           ph.classList.add("drop-target");
           hoveredPlaceholder = ph;
-        } else {
-          ph.classList.remove("drop-target");
+          break;
         }
       }
       viewport._lastPlaceholderTarget = hoveredPlaceholder;
+    }
+  });
   svg.addEventListener("dragleave", ()=>{
     if(viewport._lastChunkTarget && viewport._lastChunkTarget.el) viewport._lastChunkTarget.el.classList.remove("drop-target");
+    if(viewport._lastPlaceholderTarget) viewport._lastPlaceholderTarget.classList.remove("drop-target");
     viewport._lastChunkTarget = null;
+    viewport._lastPlaceholderTarget = null;
   });
   svg.addEventListener("drop", (e)=>{
     const chunkId = e.dataTransfer.getData("application/x-chunk-id");
     if(!chunkId) return;
     e.preventDefault();
 
-    const target = viewport._lastChunkTarget || (()=>{
-      const pt = svgPoint(e); return pickSegmentAt(pt.x, pt.y);
-    })();
-
+    // Clear all highlights
     if(viewport._lastChunkTarget && viewport._lastChunkTarget.el) viewport._lastChunkTarget.el.classList.remove("drop-target");
-    viewport._lastChunkTarget = null;
+    if(viewport._lastPlaceholderTarget) viewport._lastPlaceholderTarget.classList.remove("drop-target");
 
-      // Check for placeholder drop (add as child)
-      const placeholderTarget = viewport._lastPlaceholderTarget;
-      if(placeholderTarget) {
-        const parentId = placeholderTarget._parentId;
-        const chIdx = state.inbox.findIndex(c=>c.id===chunkId);
-        if(chIdx<0) { toast("Chunk already used or missing","warn"); return; }
-        const chunk = state.inbox[chIdx];
-        const newId = uid();
-        state.nodes[newId] = {
-          id: newId,
-          title: chunk.text.trim().slice(0, 240),
-          categoryId: state.catOrder[0],
-          rating: 3,
-          children:[],
-          parentId: parentId,
-        };
-        const parent = state.nodes[parentId];
-        parent.children.push(newId);
-        state.inbox.splice(chIdx,1);
-        state.consumedChunkIds[chunk.id] = true;
-        pushHistory();
-        renderInbox(); renderAll();
-        toast("Added as child and removed from inbox","ok");
-        return;
-      }
     const chIdx = state.inbox.findIndex(c=>c.id===chunkId);
     if(chIdx<0) { toast("Chunk already used or missing","warn"); return; }
     const chunk = state.inbox[chIdx];
 
-    if(!target){ toast("Drop onto a segment to add as sibling","warn"); return; }
+    // Check for placeholder drop (add as child)
+    const placeholderTarget = viewport._lastPlaceholderTarget;
+    if(placeholderTarget) {
+      const parentId = placeholderTarget._parentId;
+      const newId = uid();
+      state.nodes[newId] = {
+        id: newId,
+        title: chunk.text.trim().slice(0, 240),
+        categoryId: state.catOrder[0],
+        rating: 3,
+        children:[],
+        parentId: parentId,
+      };
+      const parent = state.nodes[parentId];
+      if(!parent.children) parent.children = [];
+      parent.children.push(newId);
+      state.inbox.splice(chIdx,1);
+      state.consumedChunkIds[chunk.id] = true;
+      viewport._lastPlaceholderTarget = null;
+      pushHistory();
+      renderInbox(); renderAll();
+      toast("Added as child and removed from inbox","ok");
+      return;
+    }
+
+    // Check for regular segment drop (add as sibling)
+    const target = viewport._lastChunkTarget || (()=>{
+      const pt = svgPoint(e); return pickSegmentAt(pt.x, pt.y);
+    })();
+
+    if(!target){ 
+      toast("Drop onto a segment or placeholder ring to add argument","warn"); 
+      viewport._lastChunkTarget = null;
+      return; 
+    }
 
     const targetNode = state.nodes[target.id];
     const parent = state.nodes[targetNode.parentId];
@@ -1338,6 +1385,7 @@ dialog textarea{ resize:vertical; }
 
     state.inbox.splice(chIdx,1);
     state.consumedChunkIds[chunk.id] = true;
+    viewport._lastChunkTarget = null;
 
     pushHistory();
     renderInbox(); renderAll();
