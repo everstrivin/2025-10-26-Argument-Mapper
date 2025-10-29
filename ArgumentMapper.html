@@ -193,6 +193,37 @@ dialog textarea{ resize:vertical; }
 .toast.ok{ background:#065f46; }
 .toast.warn{ background:#92400e; }
 .toast.err{ background:#7f1d1d; }
+
+/* Placeholder ring styles */
+.segment.placeholder{
+  stroke: #94a3b8;
+  stroke-width: 3;
+  stroke-dasharray: 12 8;
+  fill: none;
+  opacity: 0.8;
+  animation: pulse-placeholder 2s ease-in-out infinite;
+}
+.segment.placeholder:hover,
+.segment.placeholder.drop-target{
+  stroke: #059669;
+  stroke-width: 4;
+  opacity: 1;
+  animation: none;
+}
+
+@keyframes pulse-placeholder {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.placeholder-icon {
+  animation: pulse-placeholder 2s ease-in-out infinite;
+  cursor: pointer;
+}
+.placeholder-icon:hover {
+  animation: none;
+  opacity: 1;
+}
   </style>
 </head>
 <body>
@@ -644,15 +675,45 @@ dialog textarea{ resize:vertical; }
         const childROuter = childRInner + ringWidth;
         const placeholderEl = document.createElementNS("http://www.w3.org/2000/svg","path");
         placeholderEl.setAttribute("class", "segment placeholder");
-        placeholderEl.setAttribute("fill", "none");
-        placeholderEl.setAttribute("stroke", "#e2e8f0");
-        placeholderEl.setAttribute("stroke-width", "2");
-        placeholderEl.setAttribute("stroke-dasharray", "8 4");
-        placeholderEl.setAttribute("opacity", "0.6");
         placeholderEl.setAttribute("d", annularPath(cx, cy, childRInner, childROuter, l.a0, l.a1));
         placeholderEl._parentId = id;
         viewport.appendChild(placeholderEl);
         placeholders.push(placeholderEl);
+        
+        // Add a plus icon in the center of the placeholder ring
+        const midAngle = (l.a0 + l.a1) / 2;
+        const midRadius = (childRInner + childROuter) / 2;
+        const iconX = cx + midRadius * Math.cos(midAngle);
+        const iconY = cy + midRadius * Math.sin(midAngle);
+        
+        const plusGroup = document.createElementNS("http://www.w3.org/2000/svg","g");
+        plusGroup.setAttribute("class", "placeholder-icon");
+        plusGroup.setAttribute("transform", `translate(${iconX},${iconY})`);
+        
+        // Plus sign background circle
+        const bgCircle = document.createElementNS("http://www.w3.org/2000/svg","circle");
+        bgCircle.setAttribute("r", "12");
+        bgCircle.setAttribute("fill", "#ffffff");
+        bgCircle.setAttribute("stroke", "#94a3b8");
+        bgCircle.setAttribute("stroke-width", "2");
+        bgCircle.setAttribute("opacity", "0.9");
+        plusGroup.appendChild(bgCircle);
+        
+        // Plus sign lines
+        const vLine = document.createElementNS("http://www.w3.org/2000/svg","line");
+        vLine.setAttribute("x1", "0"); vLine.setAttribute("y1", "-6");
+        vLine.setAttribute("x2", "0"); vLine.setAttribute("y2", "6");
+        vLine.setAttribute("stroke", "#6b7280"); vLine.setAttribute("stroke-width", "2");
+        plusGroup.appendChild(vLine);
+        
+        const hLine = document.createElementNS("http://www.w3.org/2000/svg","line");
+        hLine.setAttribute("x1", "-6"); hLine.setAttribute("y1", "0");
+        hLine.setAttribute("x2", "6"); hLine.setAttribute("y2", "0");
+        hLine.setAttribute("stroke", "#6b7280"); hLine.setAttribute("stroke-width", "2");
+        plusGroup.appendChild(hLine);
+        
+        viewport.appendChild(plusGroup);
+        // Don't add the icon to placeholders array since it's not used for hit detection
       }
     });
 
