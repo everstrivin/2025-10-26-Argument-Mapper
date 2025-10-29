@@ -1621,7 +1621,40 @@ dialog textarea{ resize:vertical; }
       if(!sourceNode) { toast("Source node not found","warn"); return; }
 
       // Check for placeholder drop (move as child)
-      const placeholderTarget = viewport._lastPlaceholderTarget;
+      let placeholderTarget = viewport._lastPlaceholderTarget;
+      
+      // If no placeholder was detected during dragover, try to detect one now at drop coordinates
+      if(!placeholderTarget) {
+        // Use the same coordinate transformation as svgPoint
+        const pt = svg.createSVGPoint();
+        pt.x = e.clientX; pt.y = e.clientY;
+        const inv = viewport.getScreenCTM().inverse();
+        const svgPt = pt.matrixTransform(inv);
+        
+        const layout = buildHierarchy(state.rootId);
+        const r0 = ringWidth * 0.5;
+        
+        // Check all childless nodes to see if drop coordinates match their placeholder rings
+        for(const [parentId, l] of Object.entries(layout)) {
+          const parentNode = state.nodes[parentId];
+          if(!parentNode.children || parentNode.children.length === 0) {
+            const childDepth = l.depth + 1;
+            const childRInner = r0 + (childDepth-1)*(ringWidth + ringGap);
+            const childROuter = childRInner + ringWidth;
+            
+            const r = Math.hypot(svgPt.x, svgPt.y);
+            const angle = Math.atan2(svgPt.y, svgPt.x);
+            const normAngle = angle >= 0 ? angle : (2*Math.PI + angle);
+            
+            if(r >= childRInner && r <= childROuter + 1 && normAngle >= l.a0 && normAngle <= l.a1) {
+              placeholderTarget = { _parentId: parentId };
+              console.log("Detected placeholder at drop time for parent:", parentId);
+              break;
+            }
+          }
+        }
+      }
+      
       if(placeholderTarget) {
         const newParentId = placeholderTarget._parentId;
         const newParent = state.nodes[newParentId];
