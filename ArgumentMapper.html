@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Argument Rings — Visual Reasoning Tool</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style> 
+    :root{
+  --bg:#f8fafc;
+  --panel:#ffffff;
+  --ink:#0f172a;
+  --muted:#64748b;
+  --muted-2:#94a3b8;
+  --accent:#2563eb;
+  --danger:#ef4444;
+  --ok:#16a34a;
+  --ring-gap:2.5;
+  --ring-width:64px;
+  --shadow:0 8px 24px rgba(2,6,23,0.08);
+  --radius:14px;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.app-header{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 12px; background:#fff; box-shadow: var(--shadow); position: sticky; top:0; z-index:10;
+}
+.app-header button{ margin-right:8px; }
+.app{
+  display:grid;
+  grid-template-columns: 320px 1fr 360px;
+  gap:12px;
+  padding:12px;
+  height: calc(100vh - 60px);
+}
+
+.panel{
+  background: var(--panel);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display:flex; flex-direction:column;
+  min-height:0;
+}
+
+/* Inbox */
+.inbox h2 { padding:12px; margin:0; border-bottom:1px solid #e2e8f0; }
+#chunk-input{
+  width:100%; height:140px; border:none; border-bottom:1px solid #e2e8f0; padding:12px; resize:vertical; outline:none;
+}
+.chunker-controls{ display:flex; gap:8px; padding:8px 12px; border-bottom:1px solid #e2e8f0; }
+.chunker-controls button{ flex:1; }
+.chunk-list{
+  overflow:auto; padding:8px 12px; display:flex; flex-direction:column; gap:8px;
+}
+.chunk{
+  background:#f1f5f9; border:1px solid #e2e8f0; border-radius:10px; padding:8px;
+  display:grid; grid-template-columns: 1fr auto; gap:6px; cursor:grab;
+}
+.chunk:active{ cursor:grabbing; }
+.chunk .text[contenteditable="true"]{ outline:1px dashed #cbd5e1; background:#fff; border-radius:6px; padding:4px; }
+.chunk .row-actions{ display:flex; gap:6px; align-items:center; }
+.chunk .tag{ font-size:11px; color:#475569; }
+button.small{ padding:4px 8px; font-size:12px; }
+
+/* Rings */
+.rings{ position:relative; }
+.rings-toolbar{ padding:6px 10px; border-bottom:1px solid #e2e8f0; color:var(--muted); font-size:12px; }
+.rings-stage{ position:relative; flex:1; min-height:0; }
+#ring-svg{
+  width:100%; height:100%; background: #fff;
+  border-bottom-left-radius: var(--radius);
+  border-bottom-right-radius: var(--radius);
+  outline:none;
+}
+#pan-surface{ cursor: grab; }
+#pan-surface:active{ cursor: grabbing; }
+
+.segment{
+  stroke:#fff; stroke-width:2;
+  filter: none;
+  transition: transform .05s ease-out;
+}
+.segment.hover{
+  stroke-width:3;
+  filter:url(#dropGlow);
+}
+.segment.drop-target{
+  stroke:#111827; stroke-dasharray:6 4; stroke-width:2.5;
+}
+.segment.dragging{ opacity:.65; }
+
+.center-dot{
+  fill: #334155; opacity:.2;
+}
+
+.tooltip{
+  position:absolute;
+  background:#111827; color:#fff; padding:4px 8px; font-size:12px;
+  border-radius:8px; pointer-events:none; opacity:0; transform: translate(-50%, -120%);
+  white-space: nowrap;
+  transition: opacity .08s ease;
+  box-shadow: 0 6px 20px rgba(0,0,0,.15);
+}
+
+/* Right panel */
+.right{ display:flex; flex-direction:column; gap:12px; padding:12px; }
+.tree-section, .categories-section{
+  background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:10px;
+}
+.tree-section h2, .categories-section h2 { margin:0 0 8px 0; }
+.focus-path{ font-size:12px; color:var(--muted); margin-bottom:6px; }
+
+/* 3-row tree aligned as two-column grid: label + list */
+.tree-rows{ display:flex; flex-direction:column; gap:10px; }
+.tree-row{
+  display:grid;
+  grid-template-columns: 88px 1fr;
+  align-items:start;
+  column-gap:8px;
+}
+.row-title{ font-size:12px; color:var(--muted); margin:0; padding-top:6px; }
+
+.tree-list{
+  min-height:42px; background:#f8fafc; border:1px dashed #e2e8f0; padding:6px; border-radius:8px;
+  display:flex; flex-wrap:wrap; gap:6px;
+}
+.placeholder{
+  font-size:12px; color:var(--muted-2); padding:4px 6px;
+}
+.tree-item{
+  display:inline-flex; align-items:center; gap:6px;
+  background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:4px 8px; cursor:grab;
+}
+.tree-item:active{ cursor:grabbing; }
+.tree-item .label[contenteditable="true"]{ outline:1px dashed #cbd5e1; border-radius:4px; padding:2px 4px; }
+.badge{ font-size:11px; padding:2px 6px; border-radius:999px; border:1px solid #e2e8f0; color:#0f172a; background:#f1f5f9; }
+.tree-actions button{ margin-left:4px; }
+
+.categories-section .category-list{
+  display:flex; flex-direction:column; gap:8px; max-height:280px; overflow:auto; padding-right:2px;
+}
+.category{
+  display:grid; grid-template-columns: 24px 1fr auto auto; align-items:center; gap:8px;
+  border:1px solid #e2e8f0; border-radius:8px; padding:6px;
+}
+.category input[type="color"]{ width:24px; height:24px; padding:0; border:none; background:none; }
+.category .name[contenteditable="true"]{ outline:1px dashed #cbd5e1; border-radius:4px; padding:2px 4px; }
+
+.category-actions{ display:flex; gap:6px; margin-top:8px; }
+
+button{
+  appearance:none; border:1px solid #e2e8f0; background:#fff; border-radius:8px; padding:6px 10px; cursor:pointer;
+}
+button.primary{ background:var(--accent); border-color:var(--accent); color:#fff; }
+button.danger{ background:var(--danger); border-color:var(--danger); color:#fff; }
+
+.sep{ display:inline-block; width:1px; height:20px; background:#e2e8f0; margin:0 8px; }
+.status-pill{
+  display:inline-block; padding:4px 10px; background:#eef2ff; color:#3730a3; border-radius:999px; font-size:12px; border:1px solid #c7d2fe;
+}
+
+/* Dialogs */
+dialog{
+  border:none; border-radius:12px; padding:0; width:min(560px, 92vw);
+  box-shadow: var(--shadow);
+}
+dialog::backdrop{ background: rgba(15,23,42,.4); }
+dialog form{ padding:14px; display:flex; flex-direction:column; gap:10px; }
+dialog h3{ margin:4px 0 6px 0; }
+dialog label{ display:flex; flex-direction:column; gap:4px; font-size:14px; }
+dialog textarea{ resize:vertical; }
+.two-col{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+.dialog-actions{ display:flex; gap:8px; justify-content:flex-end; padding-top:6px; }
+.warning{ color:#b45309; background:#fffbeb; border:1px solid #fcd34d; padding:6px 8px; border-radius:8px; }
+
+/* Toasts */
+#toast-container{
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+  display:flex; flex-direction:column; gap:8px; z-index: 9999;
+}
+.toast{
+  background:#111827; color:#fff; padding:8px 12px; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.25);
+  font-size:13px;
+}
+.toast.ok{ background:#065f46; }
+.toast.warn{ background:#92400e; }
+.toast.err{ background:#7f1d1d; }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="left-controls">
+      <button id="btn-import" title="Import JSON">Import</button>
+      <button id="btn-export" title="Export JSON">Export</button>
+      <input type="file" id="file-input" accept="application/json" style="display:none" />
+    </div>
+    <div class="center-controls">
+      <button id="btn-home" title="Recenter / Reset Zoom">Home</button>
+      <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="btn-redo" title="Redo (Ctrl+Y)">Redo</button>
+      <span class="sep"></span>
+      <span class="zoom-readout">Zoom: <span id="zoom-level">100%</span></span>
+    </div>
+    <div class="right-controls">
+      <span class="status-pill" id="status-pill">Ready</span>
+    </div>
+  </header>
+
+  <main class="app">
+    <!-- Inbox / Chunker -->
+    <section class="panel inbox">
+      <h2>Chunk Inbox</h2>
+      <textarea id="chunk-input" placeholder="Paste longform text here..."></textarea>
+      <div class="chunker-controls">
+        <button id="btn-smart-chunk">Smart Chunk</button>
+        <button id="btn-clear-inbox">Clear Inbox</button>
+      </div>
+      <div class="chunk-list" id="chunk-list" aria-label="Chunks"></div>
+    </section>
+
+    <!-- Center: Rings -->
+    <section class="panel rings">
+      <div class="rings-toolbar">
+        <span>Drag background to pan • Scroll to zoom • Drag nodes to reorder/reparent</span>
+      </div>
+      <div class="rings-stage" id="rings-stage">
+        <svg id="ring-svg" tabindex="0" aria-label="Argument rings" role="application">
+          <defs>
+            <filter id="dropGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
+              <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+          <g id="bg">
+            <!-- Plain background for infinite panning (no grid/pattern) -->
+            <rect id="pan-surface" x="-5000" y="-5000" width="10000" height="10000" fill="#ffffff"></rect>
+          </g>
+          <g id="viewport" transform="translate(0,0) scale(1)"></g>
+        </svg>
+        <div id="tooltip" class="tooltip" role="tooltip" aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <!-- Right: Tree + Categories -->
+    <section class="panel right">
+      <div class="tree-section">
+        <h2>Focused Node</h2>
+        <div id="focus-path" class="focus-path"></div>
+        <div class="tree-rows">
+          <div class="tree-row">
+            <div class="row-title">Parent</div>
+            <div id="tree-parent" class="tree-list" data-row="parent"></div>
+          </div>
+          <div class="tree-row">
+            <div class="row-title">Siblings</div>
+            <div id="tree-siblings" class="tree-list" data-row="siblings"></div>
+          </div>
+          <div class="tree-row">
+            <div class="row-title">Children</div>
+            <div id="tree-children" class="tree-list" data-row="children"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="categories-section">
+        <h2>Categories</h2>
+        <div id="category-list" class="category-list"></div>
+        <div class="category-actions">
+          <input id="new-cat-name" placeholder="New category name" />
+          <input id="new-cat-color" type="color" value="#00aa88" title="Choose category color" />
+          <button id="btn-add-category">Add</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modals -->
+  <dialog id="edit-argument-dialog">
+    <form method="dialog" id="edit-argument-form">
+      <h3>Edit Argument</h3>
+      <label>Title
+        <textarea id="edit-title" rows="3" required></textarea>
+      </label>
+      <div class="two-col">
+        <label>Category
+          <select id="edit-category"></select>
+        </label>
+        <label>Rating
+          <input id="edit-rating" type="range" min="1" max="5" step="1" />
+          <span id="edit-rating-value">3</span>
+        </label>
+      </div>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button id="btn-delete-node" class="danger" type="button">Delete</button>
+        <button id="btn-save-node" class="primary" value="default">Save</button>
+      </div>
+      <p id="delete-warning" class="warning" hidden>This node has children. Deleting it will remove its entire subtree.</p>
+    </form>
+  </dialog>
+
+  <dialog id="new-argument-dialog">
+    <form method="dialog" id="new-argument-form">
+      <h3>New Argument</h3>
+      <label>Title
+        <textarea id="new-title" rows="3" required></textarea>
+      </label>
+      <div class="two-col">
+        <label>Category
+          <select id="new-category"></select>
+        </label>
+        <label>Rating
+          <input id="new-rating" type="range" min="1" max="5" step="1" value="3"/>
+          <span id="new-rating-value">3</span>
+        </label>
+      </div>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button class="primary" id="btn-create-node" value="default">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="link-argument-dialog">
+    <form method="dialog" id="link-argument-form">
+      <h3>Link Existing Argument</h3>
+      <label>Choose node to link
+        <select id="link-node-select"></select>
+      </label>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button class="primary" id="btn-link-node" value="default">Link</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast-container" aria-live="polite"></div>
+
+  <script>
+/* Argument Rings — Visual Reasoning Tool (vanilla JS)
+   Updates in this version:
+   - Removed grid pattern background; panning uses a plain white infinite rect.
+   - Tree view: Parent shows SINGLE parent; Siblings exclude the focused node;
+     Children shows only children; clear placeholders when empty.
+   - Tree rows aligned via CSS grid (label + list).
+*/
+
+(() => {
+  // ---------- Utilities ----------
+  const $ = (sel, root=document) => root.querySelector(sel);
+  const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+  const uid = () => 'id_'+Math.random().toString(36).slice(2,9);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a,b,t) => a + (b-a)*t;
+  const deg2rad = d => d*Math.PI/180;
+  const rad2deg = r => r*180/Math.PI;
+  const now = () => Date.now();
+
+  const toastContainer = $("#toast-container");
+  const statusPill = $("#status-pill");
+  function toast(msg, type="ok", ttl=2200){
+    const el = document.createElement("div"); el.className = `toast ${type}`; el.textContent = msg;
+    toastContainer.appendChild(el); setTimeout(()=>{ el.remove(); }, ttl);
+  }
+  function setStatus(msg){ statusPill.textContent = msg; }
+  function deepClone(obj){ return JSON.parse(JSON.stringify(obj)); }
+
+  // ---------- Persistence + Undo ----------
+  const STORAGE_KEY = "argumentRingsState_v1";
+  const UNDO_LIMIT = 50;
+  const history = { stack: [], cursor: -1, pushing: false };
+  function pushHistory(){
+    if(history.pushing) return;
+    const snapshot = exportState(true);
+    history.stack = history.stack.slice(0, history.cursor+1);
+    history.stack.push(snapshot);
+    if(history.stack.length > UNDO_LIMIT){ history.stack.shift(); }
+    history.cursor = history.stack.length - 1;
+    saveToStorage();
+  }
+  function undo(){
+    if(history.cursor <= 0) return toast("Nothing to undo","warn");
+    history.cursor--;
+    const stateObj = history.stack[history.cursor];
+    importState(stateObj, {silent:true});
+    renderAll();
+    saveToStorage();
+  }
+  function redo(){
+    if(history.cursor >= history.stack.length-1) return toast("Nothing to redo","warn");
+    history.cursor++;
+    const stateObj = history.stack[history.cursor];
+    importState(stateObj, {silent:true});
+    renderAll();
+    saveToStorage();
+  }
+  $("#btn-undo").addEventListener("click", undo);
+  $("#btn-redo").addEventListener("click", redo);
+  window.addEventListener("keydown", (e)=>{
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="z"){ e.preventDefault(); undo(); }
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="y"){ e.preventDefault(); redo(); }
+  });
+
+  function saveToStorage(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(exportState(true)));
+  }
+  function loadFromStorage(){
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return null;
+    try{ return JSON.parse(raw); } catch{ return null; }
+  }
+
+  // ---------- Data Model ----------
+  const state = {
+    categories: {},
+    catOrder: [],
+    rootId: null,
+    nodes: {},
+    focusId: null,
+    inbox: [],
+    consumedChunkIds: {},
+    view: { panX: 0, panY: 0, zoom: 1 },
+  };
+
+  function ensureDefaults(){
+    if(Object.keys(state.categories).length===0){
+      const defaults = [
+        ["Pro", "#22c55e"],
+        ["Con", "#ef4444"],
+        ["Fallacy", "#f59e0b"],
+        ["Deductive", "#3b82f6"],
+        ["Inductive", "#8b5cf6"],
+        ["Abductive", "#14b8a6"],
+      ];
+      defaults.forEach(([name, color])=>{
+        const id = uid();
+        state.categories[id] = {id, name, colorHex: color};
+        state.catOrder.push(id);
+      });
+    }
+    if(!state.rootId){
+      const root = { id: uid(), title: "Root", categoryId: state.catOrder[0], rating: 3, children: [], parentId: null };
+      state.rootId = root.id;
+      state.nodes[root.id] = root;
+    }
+    if(!state.focusId){
+      state.focusId = state.rootId;
+    }
+  }
+
+  // ---------- Category helpers ----------
+  function hexToHsl(hex){
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if(!m) return {h:0,s:0,l:.5};
+    let r = parseInt(m[1],16)/255, g=parseInt(m[2],16)/255, b=parseInt(m[3],16)/255;
+    const max=Math.max(r,g,b), min=Math.min(r,g,b);
+    let h,s,l=(max+min)/2;
+    if(max===min){ h=s=0; }
+    else{
+      const d=max-min;
+      s = l>0.5? d/(2-max-min) : d/(max+min);
+      switch(max){
+        case r: h=(g-b)/d + (g<b?6:0); break;
+        case g: h=(b-r)/d + 2; break;
+        case b: h=(r-g)/d + 4; break;
+      }
+      h*=60;
+    }
+    return {h,s,l};
+  }
+  function colorFor(node){
+    const cat = state.categories[node.categoryId] || Object.values(state.categories)[0];
+    const {h,s,l} = hexToHsl(cat.colorHex);
+    const sat = Math.max(0, Math.min(1, s * (0.35 + 0.13*node.rating)));
+    const light = Math.max(0.25, Math.min(0.8, 0.62 - 0.04*node.rating));
+    return `hsl(${Math.round(h)}deg ${Math.round(sat*100)}% ${Math.round(light*100)}%)`;
+  }
+
+  // ---------- Layout ----------
+  const ringWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ring-width")) || 64;
+  const ringGap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ring-gap")) || 2.5;
+
+  function buildHierarchy(rootId){
+    const nodes = state.nodes;
+    const annotated = {};
+    function assignAngles(nodeId, a0, a1, depth){
+      const node = nodes[nodeId];
+      annotated[nodeId] = { a0, a1, depth };
+      const kids = node.children || [];
+      const span = a1 - a0;
+      const n = kids.length;
+      for(let i=0;i<n;i++){
+        const kId = kids[i];
+        const k0 = a0 + span * (i/n);
+        const k1 = a0 + span * ((i+1)/n);
+        assignAngles(kId, k0, k1, depth+1);
+      }
+    }
+    assignAngles(rootId, 0, Math.PI*2, 0);
+    return annotated;
+  }
+
+  function maxDepthFrom(id){
+    let md = 0;
+    (function dfs(n, d){
+      md = Math.max(md, d);
+      const node = state.nodes[n];
+      (node.children||[]).forEach(c => dfs(c, d+1));
+    })(id, 0);
+    return md;
+  }
+
+  function annularPath(cx, cy, rInner, rOuter, a0, a1, gapAngle=deg2rad(1.8)){
+    const pad = gapAngle/2;
+    const aa0 = a0 + pad;
+    const aa1 = a1 - pad;
+    const largeArc = (aa1 - aa0) % (2*Math.PI) > Math.PI ? 1 : 0;
+
+    const p0 = { x: cx + rOuter*Math.cos(aa0), y: cy + rOuter*Math.sin(aa0) };
+    const p1 = { x: cx + rOuter*Math.cos(aa1), y: cy + rOuter*Math.sin(aa1) };
+    const p2 = { x: cx + rInner*Math.cos(aa1), y: cy + rInner*Math.sin(aa1) };
+    const p3 = { x: cx + rInner*Math.cos(aa0), y: cy + rInner*Math.sin(aa0) };
+
+    return [
+      `M ${p0.x} ${p0.y}`,
+      `A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${p1.x} ${p1.y}`,
+      `L ${p2.x} ${p2.y}`,
+      `A ${rInner} ${rInner} 0 ${largeArc} 0 ${p3.x} ${p3.y}`,
+      `Z`
+    ].join(' ');
+  }
+
+  // ---------- SVG / Pan & Zoom ----------
+  const svg = $("#ring-svg");
+  const viewport = $("#viewport");
+  const panSurface = $("#pan-surface");
+  const tooltip = $("#tooltip");
+  const zoomReadout = $("#zoom-level");
+  let view = state.view;
+
+  function applyView(){
+    viewport.setAttribute("transform", `translate(${view.panX},${view.panY}) scale(${view.zoom})`);
+    zoomReadout.textContent = Math.round(view.zoom*100)+'%';
+  }
+  function homeView(){
+    view.panX = svg.clientWidth/2;
+    view.panY = svg.clientHeight/2;
+    view.zoom = 1;
+    applyView();
+  }
+  $("#btn-home").addEventListener("click", ()=>{ homeView(); pushHistory(); });
+
+  function svgPoint(evt){
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    const inv = viewport.getScreenCTM().inverse();
+    return pt.matrixTransform(inv);
+  }
+
+  // Pan
+  let panning=false, panStart={x:0,y:0}, viewStart={x:0,y:0};
+  panSurface.addEventListener("pointerdown", (e)=>{
+    panning = true; panStart = {x:e.clientX, y:e.clientY}; viewStart={x:view.panX, y:view.panY};
+    panSurface.setPointerCapture(e.pointerId);
+  });
+  panSurface.addEventListener("pointermove", (e)=>{
+    if(!panning) return;
+    const dx = e.clientX - panStart.x;
+    const dy = e.clientY - panStart.y;
+    view.panX = viewStart.x + dx;
+    view.panY = viewStart.y + dy;
+    applyView();
+  });
+  panSurface.addEventListener("pointerup", (e)=>{ panning=false; panSurface.releasePointerCapture(e.pointerId); pushHistory(); });
+
+  // Zoom (wheel)
+  svg.addEventListener("wheel", (e)=>{
+    e.preventDefault();
+    const scaleFactor = Math.pow(1.0018, -e.deltaY);
+    const prev = view.zoom;
+    const next = Math.max(0.2, Math.min(3.5, prev * scaleFactor));
+
+    const ptBefore = svgPoint(e);
+    view.zoom = next;
+    applyView();
+    const ptAfter = svgPoint(e);
+    view.panX += (ptAfter.x - ptBefore.x) * next;
+    view.panY += (ptAfter.y - ptBefore.y) * next;
+    applyView();
+  }, {passive:false});
+
+  // ---------- Rendering ----------
+  function renderRings(){
+    viewport.innerHTML = "";
+
+    const layout = buildHierarchy(state.rootId);
+    const cx = 0, cy = 0;
+    const r0 = ringWidth * 0.5;
+    const centerDot = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    centerDot.setAttribute("class","center-dot");
+    centerDot.setAttribute("cx", cx);
+    centerDot.setAttribute("cy", cy);
+    centerDot.setAttribute("r", r0*0.7);
+    viewport.appendChild(centerDot);
+
+    const layers = new Map();
+    Object.entries(layout).forEach(([id, l])=>{
+      if(id === state.rootId) return;
+      const node = state.nodes[id];
+      const depth = l.depth;
+      const rInner = r0 + (depth-1)*(ringWidth + ringGap);
+      const rOuter = rInner + ringWidth;
+      const pathEl = document.createElementNS("http://www.w3.org/2000/svg","path");
+      pathEl.setAttribute("class", "segment");
+      pathEl.setAttribute("fill", colorFor(node));
+      pathEl.setAttribute("data-id", id);
+      pathEl.setAttribute("d", annularPath(cx, cy, rInner, rOuter, l.a0, l.a1));
+      addSegmentListeners(pathEl);
+      viewport.appendChild(pathEl);
+
+      if(!layers.has(depth)) layers.set(depth, []);
+      layers.get(depth).push({ id, depth, a0:l.a0, a1:l.a1, rInner, rOuter, el: pathEl });
+    });
+
+    viewport._layers = layers;
+  }
+
+  // ---------- Tooltip ----------
+  let tooltipActiveId = null;
+  function addSegmentListeners(el){
+    el.addEventListener("mouseenter", ()=>{
+      const id = el.dataset.id;
+      tooltipActiveId = id;
+      const node = state.nodes[id];
+      tooltip.textContent = displayTitle(node);
+      tooltip.style.opacity = "1";
+      tooltip.setAttribute("aria-hidden", "false");
+      el.classList.add("hover");
+    });
+    el.addEventListener("mouseleave", ()=>{
+      tooltipActiveId = null;
+      tooltip.style.opacity = "0";
+      tooltip.setAttribute("aria-hidden", "true");
+      el.classList.remove("hover");
+    });
+    el.addEventListener("mousemove", (e)=>{
+      tooltip.style.left = (e.clientX)+"px";
+      tooltip.style.top = (e.clientY)+"px";
+    });
+    el.addEventListener("click", ()=>{
+      const id = el.dataset.id;
+      openEditModal(id);
+      focusNode(id);
+    });
+    el.addEventListener("pointerdown", segmentDragStart);
+  }
+  svg.addEventListener("mousemove", (e)=>{
+    if(tooltipActiveId){
+      tooltip.style.left = (e.clientX)+"px";
+      tooltip.style.top = (e.clientY)+"px";
+    }
+  });
+
+  // ---------- Segment Drag / Drop ----------
+  let dragSeg = null;
+  let dragOverTarget = null;
+
+  function segmentDragStart(e){
+    e.stopPropagation();
+    const id = e.currentTarget.dataset.id;
+    dragSeg = { id, pointerId: e.pointerId };
+    svg.setPointerCapture(e.pointerId);
+    e.currentTarget.classList.add("dragging");
+    svg.addEventListener("pointermove", segmentDragMove);
+    svg.addEventListener("pointerup", segmentDragEnd);
+    setStatus("Dragging segment…");
+  }
+  function segmentDragMove(e){
+    if(!dragSeg) return;
+    const pt = svgPoint(e);
+    const target = pickSegmentAt(pt.x, pt.y);
+    updateDragVisual(target);
+  }
+  function segmentDragEnd(e){
+    if(!dragSeg) return;
+    svg.releasePointerCapture(dragSeg.pointerId);
+    const sourceId = dragSeg.id;
+    const pt = svgPoint(e);
+    const target = pickSegmentAt(pt.x, pt.y);
+
+    $$(".segment.dragging").forEach(el=>el.classList.remove("dragging"));
+    if(dragOverTarget){ dragOverTarget.el.classList.remove("drop-target"); dragOverTarget=null; }
+    svg.removeEventListener("pointermove", segmentDragMove);
+    svg.removeEventListener("pointerup", segmentDragEnd);
+
+    if(!target){ setStatus("Ready"); return; }
+
+    const src = state.nodes[sourceId];
+    const srcDepth = getDepthOf(sourceId);
+    const tgtDepth = target.depth;
+    const tgtNode = state.nodes[target.id];
+
+    if(target.id === sourceId || isDescendant(sourceId, target.id)){
+      toast("Invalid drop: cannot drop onto self/descendant","warn"); setStatus("Ready"); return;
+    }
+    if(tgtDepth === srcDepth){
+      reorderIntoSiblingPosition(sourceId, tgtNode.id);
+      toast("Reordered","ok");
+    } else if (tgtDepth === srcDepth - 1) {
+      moveAsChild(sourceId, target.id);
+      toast("Moved as child","ok");
+    } else {
+      toast("Drop only allowed onto same ring (reorder) or one ring inward (become child).","warn");
+    }
+    setStatus("Ready");
+    pushHistory(); renderAll();
+  }
+  function updateDragVisual(target){
+    if(dragOverTarget && (!target || dragOverTarget.id !== target.id)){
+      dragOverTarget.el.classList.remove("drop-target");
+      dragOverTarget = null;
+    }
+    if(target){
+      target.el.classList.add("drop-target");
+      dragOverTarget = target;
+    }
+  }
+
+  function pickSegmentAt(x, y){
+    const depthInfo = viewport._layers;
+    if(!depthInfo) return null;
+    const r = Math.hypot(x, y);
+    const angle = Math.atan2(y, x);
+    const normAngle = angle>=0 ? angle : (2*Math.PI + angle);
+
+    const dApprox = Math.round((r - (ringWidth*0.5)) / (ringWidth + ringGap)) + 1;
+    const candidates = [dApprox-1, dApprox, dApprox+1].filter(d => depthInfo.has(d));
+    for(const d of candidates){
+      const arr = depthInfo.get(d);
+      for(const it of arr){
+        if(r >= it.rInner && r <= it.rInner + ringWidth + 0.5){
+          if(normAngle >= it.a0 && normAngle <= it.a1){
+            return it;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function getDepthOf(nodeId){
+    let d = 0, cur = nodeId;
+    while(true){
+      const n = state.nodes[cur];
+      if(!n || n.parentId==null) break;
+      d++; cur = n.parentId;
+    }
+    return d;
+  }
+  function isDescendant(nodeId, maybeAncestor){
+    let cur = state.nodes[nodeId];
+    while(cur && cur.parentId){
+      if(cur.parentId === maybeAncestor) return true;
+      cur = state.nodes[cur.parentId];
+    }
+    return false;
+  }
+  function reorderIntoSiblingPosition(srcId, targetSiblingId){
+    const src = state.nodes[srcId];
+    const target = state.nodes[targetSiblingId];
+    const parentId = target.parentId;
+    if(src.parentId){
+      const arr = state.nodes[src.parentId].children;
+      const i = arr.indexOf(srcId);
+      if(i>=0) arr.splice(i,1);
+    }
+    const list = state.nodes[parentId].children;
+    const idx = list.indexOf(targetSiblingId);
+    const insertAt = idx>=0 ? idx+1 : list.length;
+    if(!list.includes(srcId)) list.splice(insertAt, 0, srcId);
+    src.parentId = parentId;
+  }
+  function moveAsChild(srcId, newParentId){
+    const src = state.nodes[srcId];
+    if(src.parentId){
+      const arr = state.nodes[src.parentId].children;
+      const i = arr.indexOf(srcId);
+      if(i>=0) arr.splice(i,1);
+    }
+    const np = state.nodes[newParentId];
+    if(!np.children) np.children = [];
+    if(!np.children.includes(srcId)) np.children.push(srcId);
+    src.parentId = newParentId;
+  }
+
+  // ---------- Tree View (3 rows) ----------
+  const treeParent = $("#tree-parent");
+  const treeSiblings = $("#tree-siblings");
+  const treeChildren = $("#tree-children");
+  const focusPath = $("#focus-path");
+
+  function displayTitle(node){
+    if(node.linkTo && state.nodes[node.linkTo]){
+      return `↪ ${state.nodes[node.linkTo].title}`;
+    }
+    return node.title || "(untitled)";
+  }
+
+  function placeholder(text){
+    const el = document.createElement("div");
+    el.className = "placeholder";
+    el.textContent = text;
+    return el;
+  }
+
+  function focusNode(id){
+    if(!state.nodes[id]) return;
+    state.focusId = id;
+    renderTree();
+    renderRings();
+    saveToStorage();
+  }
+
+  function nodeBadge(node){
+    const cat = state.categories[node.categoryId] || {};
+    const span = document.createElement("span");
+    span.className = "badge";
+    span.textContent = `${cat.name || "Cat"} · ${node.rating}`;
+    return span;
+  }
+
+  function buildTreeItem(node){
+    const el = document.createElement("div");
+    el.className = "tree-item";
+    el.draggable = true;
+    el.dataset.id = node.id;
+
+    const label = document.createElement("span");
+    label.className = "label";
+    label.contentEditable = "true";
+    label.textContent = displayTitle(node);
+    label.addEventListener("blur", ()=>{
+      const s = label.textContent.trim();
+      if(s!==displayTitle(node)){
+        if(node.linkTo && state.nodes[node.linkTo]){
+          state.nodes[node.linkTo].title = s;
+        } else {
+          node.title = s;
+        }
+        pushHistory(); renderAll();
+      }
+    });
+    label.addEventListener("click", ()=> focusNode(node.id));
+
+    const badge = nodeBadge(node);
+
+    const actions = document.createElement("span");
+    actions.className = "tree-actions";
+    actions.append(
+      button("⋯", "small", ()=> openEditModal(node.id)),
+      button("+sib","small", ()=> openNewModal({mode:"sibling", refId:node.id})),
+      button("+child","small", ()=> openNewModal({mode:"child", refId:node.id})),
+      button("Dup","small", ()=> duplicateNode(node.id)),
+      button("Link","small", ()=> openLinkModal(node.id)),
+      button("Unlink","small", ()=> unlinkNode(node.id)),
+      button("Del","small danger", ()=> deleteNodeWithConfirm(node.id))
+    );
+
+    el.append(label, badge, actions);
+
+    el.addEventListener("dragstart", (e)=>{
+      e.dataTransfer.setData("application/x-node-id", node.id);
+      e.dataTransfer.effectAllowed = "move";
+    });
+    el.addEventListener("dragover", (e)=>{ e.preventDefault(); el.classList.add("hover"); });
+    el.addEventListener("dragleave", ()=> el.classList.remove("hover"));
+    el.addEventListener("drop", (e)=>{
+      e.preventDefault();
+      el.classList.remove("hover");
+      const srcId = e.dataTransfer.getData("application/x-node-id");
+      if(!srcId) return;
+      if(srcId === node.id || isDescendant(node.id, srcId)) return toast("Invalid drop","warn");
+      reorderIntoSiblingPosition(srcId, node.id);
+      pushHistory(); renderAll(); toast("Reordered","ok");
+    });
+
+    return el;
+  }
+
+  function renderTree(){
+    const f = state.nodes[state.focusId];
+
+    // Focus path
+    const path = [];
+    let cur = f;
+    while(cur){ path.unshift(cur.id); cur = state.nodes[cur.parentId]; }
+    focusPath.textContent = path.map(id=> state.nodes[id].title || "Root").join(" › ");
+
+    // Parent
+    treeParent.innerHTML="";
+    const parent = state.nodes[f.parentId];
+    if(parent && parent.id !== state.rootId){
+      treeParent.appendChild(buildTreeItem(parent));
+    } else {
+      treeParent.appendChild(placeholder("(none)"));
+    }
+
+    // Siblings (exclude focused)
+    treeSiblings.innerHTML="";
+    if(parent){
+      const siblings = (parent.children||[]).filter(sid=> sid!==f.id);
+      if(siblings.length){
+        siblings.forEach(sid=> treeSiblings.appendChild(buildTreeItem(state.nodes[sid])));
+      } else {
+        treeSiblings.appendChild(placeholder("(no siblings)"));
+      }
+    } else {
+      treeSiblings.appendChild(placeholder("(no siblings)"));
+    }
+
+    // Children
+    treeChildren.innerHTML="";
+    if(f.children && f.children.length){
+      f.children.forEach(cid=> treeChildren.appendChild(buildTreeItem(state.nodes[cid])));
+    } else {
+      treeChildren.appendChild(placeholder("(no children)"));
+    }
+
+    // Drop targets for reparenting
+    [treeChildren, treeSiblings, treeParent].forEach(list=>{
+      list.addEventListener("dragover", (e)=> e.preventDefault());
+      list.addEventListener("drop", (e)=>{
+        e.preventDefault();
+        const srcId = e.dataTransfer.getData("application/x-node-id");
+        if(!srcId) return;
+
+        if(list === treeChildren){
+          if(isDescendant(state.focusId, srcId)) return toast("Cannot move a node into its descendant","warn");
+          moveAsChild(srcId, state.focusId);
+          pushHistory(); renderAll(); toast("Moved as child","ok");
+        }
+        if(list === treeParent && parent && parent.parentId){
+          reorderIntoSiblingPosition(srcId, parent.id);
+          pushHistory(); renderAll(); toast("Moved near parent","ok");
+        }
+      });
+    });
+  }
+
+  function button(txt, cls, fn){
+    const b = document.createElement("button"); b.textContent = txt; if(cls) b.className = cls; b.addEventListener("click", fn); return b;
+  }
+
+  function duplicateNode(id){
+    const n = state.nodes[id];
+    const copyId = uid();
+    const copy = deepClone(n);
+    copy.id = copyId;
+    copy.children = (n.children||[]).map(childId => duplicateSubtree(childId));
+    copy.title = (n.title||"") + " (copy)";
+    state.nodes[copyId] = copy;
+    const list = state.nodes[n.parentId].children;
+    const idx = list.indexOf(n.id);
+    list.splice(idx+1,0, copyId);
+    copy.parentId = n.parentId;
+    pushHistory(); renderAll(); toast("Duplicated","ok");
+  }
+  function duplicateSubtree(id){
+    const n = state.nodes[id];
+    const newId = uid();
+    const copy = deepClone(n);
+    copy.id = newId;
+    copy.children = (n.children||[]).map(childId => duplicateSubtree(childId));
+    state.nodes[newId] = copy;
+    copy.parentId = null;
+    return newId;
+  }
+  function unlinkNode(id){
+    const n = state.nodes[id];
+    if(!n.linkTo) return toast("Not a link","warn");
+    delete n.linkTo;
+    pushHistory(); renderAll(); toast("Unlinked","ok");
+  }
+  function deleteNodeWithConfirm(id){
+    const n = state.nodes[id];
+    if(!n) return;
+    if(n.children && n.children.length>0){
+      if(!confirm("This node has children. Delete entire subtree?")) return;
+    }
+    deleteSubtree(id);
+    const parent = state.nodes[n.parentId];
+    if(parent){ parent.children = parent.children.filter(x=>x!==id); }
+    if(state.focusId === id) state.focusId = state.rootId;
+    pushHistory(); renderAll(); toast("Deleted","ok");
+  }
+  function deleteSubtree(id){
+    const n = state.nodes[id];
+    if(!n) return;
+    (n.children||[]).forEach(deleteSubtree);
+    delete state.nodes[id];
+  }
+
+  // ---------- Categories ----------
+  const catList = $("#category-list");
+  $("#btn-add-category").addEventListener("click", ()=>{
+    const name = $("#new-cat-name").value.trim() || "New Category";
+    const color = $("#new-cat-color").value || "#00aa88";
+    const id = uid();
+    state.categories[id] = {id, name, colorHex: color};
+    state.catOrder.push(id);
+    pushHistory(); renderCategories(); renderRings(); saveToStorage();
+  });
+
+  function renderCategories(){
+    catList.innerHTML = "";
+    state.catOrder.forEach(cid=>{
+      const c = state.categories[cid];
+      const row = document.createElement("div");
+      row.className = "category"; row.dataset.id = cid;
+      const color = document.createElement("input"); color.type="color"; color.value = c.colorHex;
+      color.addEventListener("input", ()=>{ c.colorHex=color.value; renderRings(); saveToStorage(); });
+      const name = document.createElement("div"); name.className="name"; name.contentEditable="true"; name.textContent = c.name;
+      name.addEventListener("blur", ()=>{ c.name = name.textContent.trim() || c.name; renderTree(); renderRings(); saveToStorage(); });
+
+      const del = button("Delete","small danger", ()=>{
+        const inUse = Object.values(state.nodes).some(n=> n.categoryId===cid);
+        if(inUse) return toast("Category in use","warn");
+        delete state.categories[cid];
+        state.catOrder = state.catOrder.filter(x=>x!==cid);
+        pushHistory(); renderCategories();
+      });
+      const up = button("↑","small", ()=>{
+        const i = state.catOrder.indexOf(cid);
+        if(i>0){ [state.catOrder[i-1], state.catOrder[i]] = [state.catOrder[i], state.catOrder[i-1]]; renderCategories(); saveToStorage(); }
+      });
+      const down = button("↓","small", ()=>{
+        const i = state.catOrder.indexOf(cid);
+        if(i<state.catOrder.length-1){ [state.catOrder[i+1], state.catOrder[i]] = [state.catOrder[i], state.catOrder[i+1]]; renderCategories(); saveToStorage(); }
+      });
+
+      row.append(color, name, up, down, del);
+      catList.appendChild(row);
+    });
+  }
+
+  // ---------- Modals ----------
+  const editDialog = $("#edit-argument-dialog");
+  const newDialog = $("#new-argument-dialog");
+  const linkDialog = $("#link-argument-dialog");
+
+  function fillCategorySelect(sel, selectedId){
+    sel.innerHTML = "";
+    state.catOrder.forEach(cid=>{
+      const opt = document.createElement("option");
+      opt.value = cid; opt.textContent = state.categories[cid].name;
+      if(cid === selectedId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+
+  function openEditModal(id){
+    const n = state.nodes[id];
+    $("#edit-title").value = n.linkTo && state.nodes[n.linkTo] ? state.nodes[n.linkTo].title : (n.title||"");
+    fillCategorySelect($("#edit-category"), n.categoryId);
+    $("#edit-rating").value = String(n.rating || 3);
+    $("#edit-rating-value").textContent = String(n.rating || 3);
+    $("#delete-warning").hidden = !(n.children && n.children.length>0);
+
+    $("#edit-rating").oninput = ()=> $("#edit-rating-value").textContent = $("#edit-rating").value;
+
+    $("#btn-save-node").onclick = (e)=>{
+      e.preventDefault();
+      const t = $("#edit-title").value.trim();
+      const cat = $("#edit-category").value;
+      const r = parseInt($("#edit-rating").value, 10);
+      if(n.linkTo && state.nodes[n.linkTo]){
+        state.nodes[n.linkTo].title = t;
+      } else {
+        n.title = t;
+      }
+      n.categoryId = cat; n.rating = r;
+      editDialog.close();
+      pushHistory(); renderAll(); toast("Saved","ok");
+    };
+    $("#btn-delete-node").onclick = ()=>{ editDialog.close(); deleteNodeWithConfirm(id); };
+
+    if(typeof editDialog.showModal === "function"){ editDialog.showModal(); }
+    else { alert("Your browser does not support <dialog>."); }
+  }
+
+  let newModalContext = null;
+  function openNewModal(ctx){
+    newModalContext = ctx;
+    $("#new-title").value = (ctx && ctx.presetText) ? ctx.presetText : "";
+    fillCategorySelect($("#new-category"), state.catOrder[0]);
+    $("#new-rating").value = "3"; $("#new-rating-value").textContent = "3";
+    if(typeof newDialog.showModal === "function"){ newDialog.showModal(); } else { alert("No dialog support"); }
+  }
+  $("#btn-create-node").addEventListener("click", (e)=>{
+    e.preventDefault();
+    const title = $("#new-title").value.trim();
+    if(!title){ toast("Title required","err"); return; }
+    const categoryId = $("#new-category").value;
+    const rating = parseInt($("#new-rating").value, 10);
+    const id = uid();
+    const n = { id, title, categoryId, rating, children:[], parentId:null };
+    const ref = state.nodes[newModalContext.refId];
+    if(newModalContext.mode === "child"){
+      n.parentId = ref.id; ref.children.push(id);
+    } else {
+      const parent = state.nodes[ref.parentId];
+      const idx = parent.children.indexOf(ref.id);
+      n.parentId = parent.id;
+      parent.children.splice(idx+1, 0, id);
+    }
+    state.nodes[id] = n;
+    newDialog.close();
+    pushHistory(); renderAll(); toast("Created","ok");
+  });
+
+  let linkContext = null;
+  function openLinkModal(targetId){
+    linkContext = targetId;
+    const sel = $("#link-node-select");
+    sel.innerHTML = "";
+    Object.values(state.nodes).forEach(n=>{
+      if(n.id === targetId) return;
+      const opt = document.createElement("option");
+      opt.value = n.id; opt.textContent = n.title;
+      sel.appendChild(opt);
+    });
+    if(typeof linkDialog.showModal === "function"){ linkDialog.showModal(); }
+  }
+  $("#btn-link-node").addEventListener("click", (e)=>{
+    e.preventDefault();
+    const target = state.nodes[linkContext];
+    const linkTo = $("#link-node-select").value;
+    if(!state.nodes[linkTo]) return toast("Invalid link target","err");
+    target.linkTo = linkTo;
+    linkDialog.close();
+    pushHistory(); renderAll(); toast("Linked","ok");
+  });
+
+  // ---------- Chunking Inbox ----------
+  const inboxList = $("#chunk-list");
+  function renderInbox(){
+    inboxList.innerHTML = "";
+    state.inbox.forEach((ch, idx)=>{
+      const row = document.createElement("div");
+      row.className = "chunk";
+      row.draggable = true;
+      row.dataset.id = ch.id;
+      row.addEventListener("dragstart", (e)=>{
+        e.dataTransfer.setData("application/x-chunk-id", ch.id);
+        e.dataTransfer.effectAllowed = "copyMove";
+      });
+
+      const text = document.createElement("div");
+      text.className = "text";
+      text.textContent = ch.text;
+      text.contentEditable = "true";
+      text.addEventListener("blur", ()=>{
+        const t = text.textContent.trim();
+        ch.text = t;
+        saveToStorage();
+      });
+
+      const actions = document.createElement("div");
+      actions.className = "row-actions";
+      actions.append(
+        spanTag(`#${idx+1}`),
+        button("Combine ↑", "small", ()=> combineWithPrev(idx)),
+        button("Duplicate", "small", ()=> duplicateChunk(ch.id)),
+        button("Delete", "small danger", ()=> deleteChunk(ch.id))
+      );
+
+      row.append(text, actions);
+      inboxList.appendChild(row);
+    });
+  }
+  function spanTag(t){ const s=document.createElement("span"); s.className="tag"; s.textContent=t; return s; }
+  function combineWithPrev(idx){
+    if(idx<=0) return;
+    const a = state.inbox[idx-1], b = state.inbox[idx];
+    a.text = (a.text.trim() + " " + b.text.trim()).trim();
+    state.inbox.splice(idx,1);
+    pushHistory(); renderInbox(); toast("Combined","ok");
+  }
+  function duplicateChunk(id){
+    const ch = state.inbox.find(x=>x.id===id);
+    const copy = { id: uid(), text: ch.text };
+    state.inbox.splice(state.inbox.indexOf(ch)+1,0, copy);
+    pushHistory(); renderInbox(); toast("Duplicated","ok");
+  }
+  function deleteChunk(id){
+    state.inbox = state.inbox.filter(x=>x.id!==id);
+    pushHistory(); renderInbox(); toast("Deleted","ok");
+  }
+
+  $("#btn-clear-inbox").addEventListener("click", ()=>{
+    if(confirm("Clear all chunks?")){ state.inbox = []; pushHistory(); renderInbox(); }
+  });
+
+  $("#btn-smart-chunk").addEventListener("click", ()=>{
+    const raw = $("#chunk-input").value;
+    if(!raw || !raw.trim()) return toast("Paste text first","warn");
+    const chunks = smartChunk(raw);
+    chunks.forEach(t=> state.inbox.push({id: uid(), text: t}));
+    $("#chunk-input").value = "";
+    pushHistory(); renderInbox(); toast(`Chunked into ${chunks.length} items`,"ok");
+  });
+
+  function smartChunk(text){
+    const markers = /\b(therefore|however|moreover|consequently|furthermore|nevertheless|nonetheless|thus|hence|but|and yet)\b/gi;
+    const lines = text.split(/\r?\n/);
+    const items = [];
+    for(let ln of lines){
+      ln = ln.trim();
+      if(!ln) continue;
+        if (/^(\*|-|\d+[\.\)])\s+/.test(ln)) {
+        items.push(ln);
+        continue;
+      }
+      let parts = ln.split(/(?<=[\.\?\!])\s+|—|–|;|:|\.\.\./).flatMap(s => s.split(markers)).map(s=>s.trim()).filter(Boolean);
+      items.push(...parts);
+    }
+    const merged = [];
+    let buf = null;
+    for(const it of items){
+      if(!buf){ buf = it; continue; }
+      if(buf.length < 60) { buf = (buf + " " + it).trim(); }
+      else { merged.push(buf); buf = it; }
+    }
+    if(buf) merged.push(buf);
+    return merged;
+  }
+
+  // ---------- Chunk -> Ring Drop ----------
+  svg.addEventListener("dragover", (e)=>{
+    const chunkId = e.dataTransfer.getData("application/x-chunk-id");
+    if(!chunkId) return;
+    e.preventDefault();
+    const pt = svgPoint(e);
+    const target = pickSegmentAt(pt.x, pt.y);
+    if(viewport._lastChunkTarget && viewport._lastChunkTarget.el) viewport._lastChunkTarget.el.classList.remove("drop-target");
+    if(target){ target.el.classList.add("drop-target"); }
+    viewport._lastChunkTarget = target;
+  });
+      // Highlight placeholder segments for child drop
+      let hoveredPlaceholder = null;
+      for(const ph of viewport._placeholders||[]){
+        // Use SVG geometry to check if pt is inside annular segment
+        const parentId = ph._parentId;
+        const layout = buildHierarchy(state.rootId)[parentId];
+        const childRInner = parseFloat(ph.getAttribute("d").match(/M ([\d\.]+) ([\d\.]+)/)[1]);
+        const childROuter = childRInner + ringWidth;
+        const angle = Math.atan2(pt.y, pt.x);
+        const normAngle = angle>=0 ? angle : (2*Math.PI + angle);
+        if(Math.hypot(pt.x, pt.y) >= childRInner && Math.hypot(pt.x, pt.y) <= childROuter && normAngle >= layout.a0 && normAngle <= layout.a1){
+          ph.classList.add("drop-target");
+          hoveredPlaceholder = ph;
+        } else {
+          ph.classList.remove("drop-target");
+        }
+      }
+      viewport._lastPlaceholderTarget = hoveredPlaceholder;
+  svg.addEventListener("dragleave", ()=>{
+    if(viewport._lastChunkTarget && viewport._lastChunkTarget.el) viewport._lastChunkTarget.el.classList.remove("drop-target");
+    viewport._lastChunkTarget = null;
+  });
+  svg.addEventListener("drop", (e)=>{
+    const chunkId = e.dataTransfer.getData("application/x-chunk-id");
+    if(!chunkId) return;
+    e.preventDefault();
+
+    const target = viewport._lastChunkTarget || (()=>{
+      const pt = svgPoint(e); return pickSegmentAt(pt.x, pt.y);
+    })();
+
+    if(viewport._lastChunkTarget && viewport._lastChunkTarget.el) viewport._lastChunkTarget.el.classList.remove("drop-target");
+    viewport._lastChunkTarget = null;
+
+      // Check for placeholder drop (add as child)
+      const placeholderTarget = viewport._lastPlaceholderTarget;
+      if(placeholderTarget) {
+        const parentId = placeholderTarget._parentId;
+        const chIdx = state.inbox.findIndex(c=>c.id===chunkId);
+        if(chIdx<0) { toast("Chunk already used or missing","warn"); return; }
+        const chunk = state.inbox[chIdx];
+        const newId = uid();
+        state.nodes[newId] = {
+          id: newId,
+          title: chunk.text.trim().slice(0, 240),
+          categoryId: state.catOrder[0],
+          rating: 3,
+          children:[],
+          parentId: parentId,
+        };
+        const parent = state.nodes[parentId];
+        parent.children.push(newId);
+        state.inbox.splice(chIdx,1);
+        state.consumedChunkIds[chunk.id] = true;
+        pushHistory();
+        renderInbox(); renderAll();
+        toast("Added as child and removed from inbox","ok");
+        return;
+      }
+    const chIdx = state.inbox.findIndex(c=>c.id===chunkId);
+    if(chIdx<0) { toast("Chunk already used or missing","warn"); return; }
+    const chunk = state.inbox[chIdx];
+
+    if(!target){ toast("Drop onto a segment to add as sibling","warn"); return; }
+
+    const targetNode = state.nodes[target.id];
+    const parent = state.nodes[targetNode.parentId];
+    const newId = uid();
+    state.nodes[newId] = {
+      id: newId,
+      title: chunk.text.trim().slice(0, 240),
+      categoryId: state.catOrder[0],
+      rating: 3,
+      children:[],
+      parentId: parent.id,
+    };
+    const idx = parent.children.indexOf(targetNode.id);
+    parent.children.splice(idx+1, 0, newId);
+
+    state.inbox.splice(chIdx,1);
+    state.consumedChunkIds[chunk.id] = true;
+
+    pushHistory();
+    renderInbox(); renderAll();
+    toast("Added as sibling and removed from inbox","ok");
+  });
+
+  // ---------- Import / Export ----------
+  $("#btn-export").addEventListener("click", ()=>{
+    const blob = new Blob([ JSON.stringify(exportState(false), null, 2) ], {type: "application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `argument-rings-${new Date().toISOString().slice(0,19)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+  $("#btn-import").addEventListener("click", ()=> $("#file-input").click());
+  $("#file-input").addEventListener("change", (e)=>{
+    const f = e.target.files[0];
+    if(!f) return;
+    const reader = new FileReader();
+    reader.onload = ()=> {
+      try{
+        const obj = JSON.parse(reader.result);
+        importState(obj);
+        pushHistory();
+        renderAll();
+        toast("Imported","ok");
+      }catch(err){
+        toast("Invalid JSON","err");
+      }
+    };
+    reader.readAsText(f);
+    e.target.value="";
+  });
+
+  function exportState(internal=false){
+    return {
+      categories: state.categories,
+      catOrder: state.catOrder,
+      nodes: state.nodes,
+      rootId: state.rootId,
+      focusId: state.focusId,
+      inbox: state.inbox,
+      consumedChunkIds: state.consumedChunkIds,
+      view: state.view,
+      _meta: internal ? { savedAt: now() } : undefined
+    };
+  }
+  function importState(obj, opts={}){
+    ["categories","catOrder","nodes","rootId"].forEach(k=>{
+      if(!obj[k]) throw new Error("Missing key "+k);
+    });
+    Object.assign(state, deepClone(obj));
+    state.view = state.view || {panX:0,panY:0,zoom:1};
+    if(!opts.silent) toast("State loaded","ok");
+    renderCategories();
+  }
+
+  // ---------- Keyboard ----------
+  window.addEventListener("keydown", (e)=>{
+    if(e.key==="Escape"){
+      [editDialog,newDialog,linkDialog].forEach(d=> d.open && d.close());
+    }
+  });
+
+  // ---------- Init ----------
+  (function init(){
+    const saved = loadFromStorage();
+    if(saved){ try{ importState(saved, {silent:true}); }catch{} }
+    ensureDefaults();
+    renderCategories();
+    homeView();
+    applyView();
+    renderAll();
+    pushHistory();
+  })();
+
+  function renderAll(){
+    applyView();
+    renderRings();
+    renderTree();
+    renderInbox();
+    saveToStorage();
+  }
+
+  // Click-through focus sync
+  viewport.addEventListener("click", (e)=>{
+    const path = e.target.closest(".segment");
+    if(path){
+      const id = path.dataset.id;
+      focusNode(id);
+    }
+  });
+
+  // Chunks drop on tree lists too
+  [treeParent, treeSiblings, treeChildren].forEach(list=>{
+    list.addEventListener("dragover", (e)=>{
+      const chunkId = e.dataTransfer.getData("application/x-chunk-id");
+      if(chunkId){ e.preventDefault(); }
+    });
+    list.addEventListener("drop", (e)=>{
+      const chunkId = e.dataTransfer.getData("application/x-chunk-id");
+      if(!chunkId) return;
+      e.preventDefault();
+
+      const chIdx = state.inbox.findIndex(c=>c.id===chunkId);
+      if(chIdx<0) return toast("Chunk missing","warn");
+      const chunk = state.inbox[chIdx];
+      let parentId = null;
+
+      if(list===treeChildren){ parentId = state.focusId; }
+      if(list===treeSiblings){
+        const p = state.nodes[state.nodes[state.focusId].parentId];
+        parentId = p ? p.id : state.rootId;
+      }
+      if(list===treeParent){
+        const parent = state.nodes[state.focusId].parentId;
+        const grand = parent ? state.nodes[parent].parentId : state.rootId;
+        parentId = grand || state.rootId;
+      }
+
+      const newId = uid();
+      state.nodes[newId] = {
+        id:newId, title: chunk.text.trim().slice(0,240),
+        categoryId: state.catOrder[0], rating:3, children:[], parentId
+      };
+      const arr = state.nodes[parentId].children;
+      arr.push(newId);
+
+      state.inbox.splice(chIdx,1);
+      state.consumedChunkIds[chunk.id]=true;
+
+      pushHistory(); renderAll();
+      toast("Chunk added and removed from inbox","ok");
+    });
+  });
+
+})();
+
+  </script>
+</body>
+</html>
