@@ -901,6 +901,69 @@ dialog textarea{ resize:vertical; }
     src.parentId = newParentId;
   }
 
+  function reorganizeTreeForCircularMove(sourceId, targetParentId){
+    // This handles the case where a node is moved to be a child of its own descendant
+    // We need to "bump up" the tree by making the descendant the new parent
+    
+    const sourceNode = state.nodes[sourceId];
+    const targetParent = state.nodes[targetParentId];
+    
+    // Step 1: Find the path from targetParent back to sourceId
+    const pathToSource = [];
+    let current = targetParent;
+    while(current && current.id !== sourceId) {
+      pathToSource.push(current.id);
+      current = current.parentId ? state.nodes[current.parentId] : null;
+    }
+    
+    // Step 2: Reverse the parent-child relationships along this path
+    // The targetParent becomes the new root of this subtree
+    const originalSourceParent = sourceNode.parentId;
+    
+    // Remove sourceNode from its current parent
+    if(originalSourceParent) {
+      const sourceParentChildren = state.nodes[originalSourceParent].children;
+      const idx = sourceParentChildren.indexOf(sourceId);
+      if(idx >= 0) sourceParentChildren.splice(idx, 1);
+    }
+    
+    // Reverse the relationships along the path
+    let prevParent = originalSourceParent;
+    for(let i = pathToSource.length - 1; i >= 0; i--) {
+      const nodeId = pathToSource[i];
+      const node = state.nodes[nodeId];
+      const oldParent = node.parentId;
+      
+      // Remove this node from its old parent's children
+      if(oldParent) {
+        const oldParentChildren = state.nodes[oldParent].children;
+        const idx = oldParentChildren.indexOf(nodeId);
+        if(idx >= 0) oldParentChildren.splice(idx, 1);
+      }
+      
+      // Set this node's new parent
+      node.parentId = prevParent;
+      
+      // Add this node to its new parent's children (if parent exists)
+      if(prevParent) {
+        const newParentNode = state.nodes[prevParent];
+        if(!newParentNode.children) newParentNode.children = [];
+        if(!newParentNode.children.includes(nodeId)) {
+          newParentNode.children.push(nodeId);
+        }
+      }
+      
+      prevParent = nodeId;
+    }
+    
+    // Step 3: Finally, make sourceNode a child of targetParent
+    sourceNode.parentId = targetParentId;
+    if(!targetParent.children) targetParent.children = [];
+    if(!targetParent.children.includes(sourceId)) {
+      targetParent.children.push(sourceId);
+    }
+  }
+
   // ---------- Tree View (3 rows) ----------
   const treeParent = $("#tree-parent");
   const treeSiblings = $("#tree-siblings");
@@ -1345,8 +1408,9 @@ dialog textarea{ resize:vertical; }
 
   // ---------- Chunk -> Ring Drop ----------
   svg.addEventListener("dragover", (e)=>{
-    // Check if this is a chunk drag (can't use getData during dragover)
-    if(!e.dataTransfer.types.includes("application/x-chunk-id")) return;
+    // Check if this is a chunk or node drag (can't use getData during dragover)
+    if(!e.dataTransfer.types.includes("application/x-chunk-id") && 
+       !e.dataTransfer.types.includes("application/x-node-id")) return;
     e.preventDefault();
     const pt = svgPoint(e);
     const target = pickSegmentAt(pt.x, pt.y);
@@ -1407,21 +1471,64 @@ dialog textarea{ resize:vertical; }
   });
   svg.addEventListener("drop", (e)=>{
     const chunkId = e.dataTransfer.getData("application/x-chunk-id");
-    if(!chunkId) return;
+    const nodeId = e.dataTransfer.getData("application/x-node-id");
+    
+    if(!chunkId && !nodeId) return;
     e.preventDefault();
 
     // Clear all highlights
     if(viewport._lastChunkTarget && viewport._lastChunkTarget.el) viewport._lastChunkTarget.el.classList.remove("drop-target");
-    if(viewport._lastPlaceholderTarget) viewport._lastPlaceholderTarget.classList.remove("drop-target");
+    if(viewport._lastPlaceholderTarget) {
+      viewport._lastPlaceholderTarget.classList.remove("drop-target");
+      if(viewport._lastPlaceholderTarget._plusIcon) {
+        viewport._lastPlaceholderTarget._plusIcon.classList.remove("drop-target");
+      }
+    }
 
-    const chIdx = state.inbox.findIndex(c=>c.id===chunkId);
-    if(chIdx<0) { toast("Chunk already used or missing","warn"); return; }
-    const chunk = state.inbox[chIdx];
+    // Handle chunk drops
+    if(chunkId) {
+      const chIdx = state.inbox.findIndex(c=>c.id===chunkId);
+      if(chIdx<0) { toast("Chunk already used or missing","warn"); return; }
+      const chunk = state.inbox[chIdx];
 
-    // Check for placeholder drop (add as child)
-    const placeholderTarget = viewport._lastPlaceholderTarget;
-    if(placeholderTarget) {
-      const parentId = placeholderTarget._parentId;
+      // Check for placeholder drop (add as child)
+      const placeholderTarget = viewport._lastPlaceholderTarget;
+      if(placeholderTarget) {
+        const parentId = placeholderTarget._parentId;
+        const newId = uid();
+        state.nodes[newId] = {
+          id: newId,
+          title: chunk.text.trim().slice(0, 240),
+          categoryId: state.catOrder[0],
+          rating: 3,
+          children:[],
+          parentId: parentId,
+        };
+        const parent = state.nodes[parentId];
+        if(!parent.children) parent.children = [];
+        parent.children.push(newId);
+        state.inbox.splice(chIdx,1);
+        state.consumedChunkIds[chunk.id] = true;
+        viewport._lastPlaceholderTarget = null;
+        pushHistory();
+        renderInbox(); renderAll();
+        toast("Added as child and removed from inbox","ok");
+        return;
+      }
+
+      // Check for regular segment drop (add as sibling)
+      const target = viewport._lastChunkTarget || (()=>{
+        const pt = svgPoint(e); return pickSegmentAt(pt.x, pt.y);
+      })();
+
+      if(!target){ 
+        toast("Drop onto a segment or placeholder ring to add argument","warn"); 
+        viewport._lastChunkTarget = null;
+        return; 
+      }
+
+      const targetNode = state.nodes[target.id];
+      const parent = state.nodes[targetNode.parentId];
       const newId = uid();
       state.nodes[newId] = {
         id: newId,
@@ -1429,52 +1536,87 @@ dialog textarea{ resize:vertical; }
         categoryId: state.catOrder[0],
         rating: 3,
         children:[],
-        parentId: parentId,
+        parentId: parent.id,
       };
-      const parent = state.nodes[parentId];
-      if(!parent.children) parent.children = [];
-      parent.children.push(newId);
+      const idx = parent.children.indexOf(targetNode.id);
+      parent.children.splice(idx+1, 0, newId);
+
       state.inbox.splice(chIdx,1);
       state.consumedChunkIds[chunk.id] = true;
-      viewport._lastPlaceholderTarget = null;
+      viewport._lastChunkTarget = null;
+
       pushHistory();
       renderInbox(); renderAll();
-      toast("Added as child and removed from inbox","ok");
-      return;
+      toast("Added as sibling and removed from inbox","ok");
     }
 
-    // Check for regular segment drop (add as sibling)
-    const target = viewport._lastChunkTarget || (()=>{
-      const pt = svgPoint(e); return pickSegmentAt(pt.x, pt.y);
-    })();
+    // Handle node drops
+    if(nodeId) {
+      const sourceNode = state.nodes[nodeId];
+      if(!sourceNode) { toast("Source node not found","warn"); return; }
 
-    if(!target){ 
-      toast("Drop onto a segment or placeholder ring to add argument","warn"); 
-      viewport._lastChunkTarget = null;
-      return; 
+      // Check for placeholder drop (move as child)
+      const placeholderTarget = viewport._lastPlaceholderTarget;
+      if(placeholderTarget) {
+        const newParentId = placeholderTarget._parentId;
+        const newParent = state.nodes[newParentId];
+        
+        // Check for circular dependency (moving a node to be a child of its descendant)
+        if(isDescendant(newParentId, nodeId)) {
+          // Show warning and ask for confirmation
+          const shouldReorganize = confirm(
+            `⚠️ Warning: You are trying to move "${sourceNode.title.slice(0,50)}..." to be a child of its own descendant "${newParent.title.slice(0,50)}...".\n\n` +
+            `This will reorganize the tree hierarchy by promoting "${newParent.title.slice(0,50)}..." to be the new parent.\n\n` +
+            `Do you want to proceed with this reorganization?`
+          );
+          
+          if(!shouldReorganize) {
+            toast("Move cancelled by user","info");
+            viewport._lastPlaceholderTarget = null;
+            return;
+          }
+          
+          // Perform tree reorganization to avoid circular dependency
+          reorganizeTreeForCircularMove(nodeId, newParentId);
+          toast("Tree reorganized to avoid circular dependency","ok");
+        } else {
+          // Normal move operation
+          moveAsChild(nodeId, newParentId);
+          toast("Moved as child","ok");
+        }
+        
+        viewport._lastPlaceholderTarget = null;
+        pushHistory();
+        renderAll();
+        return;
+      }
+
+      // Check for regular segment drop (move as sibling)
+      const target = viewport._lastChunkTarget || (()=>{
+        const pt = svgPoint(e); return pickSegmentAt(pt.x, pt.y);
+      })();
+      
+      if(target) {
+        const targetNode = state.nodes[target.id];
+        if(!targetNode) { toast("Target node not found","warn"); return; }
+        
+        // Check for circular dependency in sibling move
+        if(isDescendant(target.id, nodeId)) {
+          toast("Cannot move a node to be sibling of its descendant","warn");
+          viewport._lastChunkTarget = null;
+          return;
+        }
+        
+        reorderIntoSiblingPosition(nodeId, target.id);
+        viewport._lastChunkTarget = null;
+        pushHistory();
+        renderAll();
+        toast("Moved as sibling","ok");
+        return;
+      }
+      
+      toast("No valid drop target found","warn");
     }
-
-    const targetNode = state.nodes[target.id];
-    const parent = state.nodes[targetNode.parentId];
-    const newId = uid();
-    state.nodes[newId] = {
-      id: newId,
-      title: chunk.text.trim().slice(0, 240),
-      categoryId: state.catOrder[0],
-      rating: 3,
-      children:[],
-      parentId: parent.id,
-    };
-    const idx = parent.children.indexOf(targetNode.id);
-    parent.children.splice(idx+1, 0, newId);
-
-    state.inbox.splice(chIdx,1);
-    state.consumedChunkIds[chunk.id] = true;
-    viewport._lastChunkTarget = null;
-
-    pushHistory();
-    renderInbox(); renderAll();
-    toast("Added as sibling and removed from inbox","ok");
   });
 
   // ---------- Import / Export ----------
