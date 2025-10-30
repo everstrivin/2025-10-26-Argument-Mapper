@@ -688,6 +688,11 @@ dialog textarea{ resize:vertical; }
         placeholderEl.setAttribute("class", "segment placeholder");
         placeholderEl.setAttribute("d", annularPath(cx, cy, childRInner, childROuter, l.a0, l.a1));
         placeholderEl._parentId = id;
+        placeholderEl.style.cursor = "pointer";
+        placeholderEl.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openNewModal({mode: "child", refId: id});
+        });
         viewport.appendChild(placeholderEl);
         placeholders.push(placeholderEl);
         
@@ -700,6 +705,11 @@ dialog textarea{ resize:vertical; }
         const plusGroup = document.createElementNS("http://www.w3.org/2000/svg","g");
         plusGroup.setAttribute("class", "placeholder-icon");
         plusGroup.setAttribute("transform", `translate(${iconX},${iconY})`);
+        plusGroup.style.cursor = "pointer";
+        plusGroup.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openNewModal({mode: "child", refId: id});
+        });
         
         // Plus sign background circle
         const bgCircle = document.createElementNS("http://www.w3.org/2000/svg","circle");
