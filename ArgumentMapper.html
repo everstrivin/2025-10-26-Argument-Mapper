@@ -824,12 +824,12 @@ dialog textarea{ resize:vertical; }
       tooltip.setAttribute("aria-hidden", "false");
       el.classList.add("hover");
       
-      // Position tooltip above the center of the element, offset 200px to the left
+      // Position tooltip above the center of the element, offset 400px to the left and 300px down
       const rect = el.getBoundingClientRect();
       const centerX = rect.left + rect.width / 2;
       const centerY = rect.top + rect.height / 2;
-      tooltip.style.left = (centerX - 200) + "px";
-      tooltip.style.top = centerY + "px";
+      tooltip.style.left = (centerX - 400) + "px";
+      tooltip.style.top = (centerY + 300) + "px";
       
       // Bring element to front within its depth group
       const depthGroup = el.parentNode;
