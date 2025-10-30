@@ -399,6 +399,18 @@ dialog textarea{ resize:vertical; }
     </form>
   </dialog>
 
+  <dialog id="node-drop-dialog">
+    <form method="dialog" id="node-drop-form">
+      <h3>Drop Node</h3>
+      <p id="node-drop-message" style="margin: 8px 0; color: var(--muted); font-size: 14px;">What would you like to do with this node?</p>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button id="btn-node-reposition" class="primary" value="reposition">Reposition Node</button>
+        <button id="btn-node-combine" class="primary" value="combine">Combine Text</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast-container" aria-live="polite"></div>
 
   <script>
@@ -886,47 +898,107 @@ dialog textarea{ resize:vertical; }
     if(target.id === sourceId || isDescendant(sourceId, target.id)){
       toast("Invalid drop: cannot drop onto self/descendant","warn"); setStatus("Ready"); dragSeg = null; return;
     }
-    if(tgtDepth === srcDepth){
-      // Same ring - reorder as siblings
-      reorderIntoSiblingPosition(sourceId, tgtNode.id);
-      toast("Reordered","ok");
-    } else if (tgtDepth === srcDepth - 1) {
-      // One ring inward - move as child
-      moveAsChild(sourceId, target.id);
-      toast("Moved as child","ok");
-    } else {
-      // Different generation move - show warning and get user confirmation
-      const srcNode = state.nodes[sourceId];
-      const generationDiff = Math.abs(tgtDepth - srcDepth);
-      const direction = tgtDepth < srcDepth ? "inward" : "outward";
-      const relationshipChange = tgtDepth < srcDepth ? 
-        `"${srcNode.title.slice(0,40)}..." will become a child of "${tgtNode.title.slice(0,40)}..."` :
-        `"${srcNode.title.slice(0,40)}..." will become a sibling of "${tgtNode.title.slice(0,40)}..."`;
+    
+    // Show dialog to ask user what to do - reposition or combine text
+    const srcTitle = src.title.slice(0, 50) + (src.title.length > 50 ? "..." : "");
+    const tgtTitle = tgtNode.title.slice(0, 50) + (tgtNode.title.length > 50 ? "..." : "");
+    $("#node-drop-message").textContent = `Drop "${srcTitle}" onto "${tgtTitle}". What would you like to do?`;
+    
+    // Store context for the dialog handlers
+    const dropContext = {
+      sourceId,
+      targetId: target.id,
+      srcDepth,
+      tgtDepth,
+    };
+    
+    // Set up dialog button handlers
+    $("#btn-node-reposition").onclick = (evt) => {
+      evt.preventDefault();
+      nodeDropDialog.close();
       
-      const shouldProceed = confirm(
-        `⚠️ Cross-Generation Move Warning\n\n` +
-        `You are moving a node ${generationDiff} generation${generationDiff > 1 ? 's' : ''} ${direction}.\n\n` +
-        `${relationshipChange}\n\n` +
-        `This will reorganize the tree structure. Do you want to proceed?`
-      );
-      
-      if(shouldProceed) {
-        if(tgtDepth < srcDepth) {
-          // Move inward (become child)
-          moveAsChild(sourceId, target.id);
-          toast("Moved as child across generations","ok");
-        } else {
-          // Move outward (become sibling)
-          reorderIntoSiblingPosition(sourceId, tgtNode.id);
-          toast("Moved as sibling across generations","ok");
-        }
+      // Execute the reposition logic based on depth
+      if(dropContext.tgtDepth === dropContext.srcDepth){
+        // Same ring - reorder as siblings
+        reorderIntoSiblingPosition(dropContext.sourceId, dropContext.targetId);
+        toast("Reordered","ok");
+      } else if (dropContext.tgtDepth === dropContext.srcDepth - 1) {
+        // One ring inward - move as child
+        moveAsChild(dropContext.sourceId, dropContext.targetId);
+        toast("Moved as child","ok");
       } else {
-        toast("Cross-generation move cancelled","info");
+        // Different generation move - show warning and get user confirmation
+        const srcNode = state.nodes[dropContext.sourceId];
+        const tgtNode = state.nodes[dropContext.targetId];
+        const generationDiff = Math.abs(dropContext.tgtDepth - dropContext.srcDepth);
+        const direction = dropContext.tgtDepth < dropContext.srcDepth ? "inward" : "outward";
+        const relationshipChange = dropContext.tgtDepth < dropContext.srcDepth ? 
+          `"${srcNode.title.slice(0,40)}..." will become a child of "${tgtNode.title.slice(0,40)}..."` :
+          `"${srcNode.title.slice(0,40)}..." will become a sibling of "${tgtNode.title.slice(0,40)}..."`;
+        
+        const shouldProceed = confirm(
+          `⚠️ Cross-Generation Move Warning\n\n` +
+          `You are moving a node ${generationDiff} generation${generationDiff > 1 ? 's' : ''} ${direction}.\n\n` +
+          `${relationshipChange}\n\n` +
+          `This will reorganize the tree structure. Do you want to proceed?`
+        );
+        
+        if(shouldProceed) {
+          if(dropContext.tgtDepth < dropContext.srcDepth) {
+            // Move inward (become child)
+            moveAsChild(dropContext.sourceId, dropContext.targetId);
+            toast("Moved as child across generations","ok");
+          } else {
+            // Move outward (become sibling)
+            reorderIntoSiblingPosition(dropContext.sourceId, dropContext.targetId);
+            toast("Moved as sibling across generations","ok");
+          }
+        } else {
+          toast("Cross-generation move cancelled","info");
+          setStatus("Ready");
+          return;
+        }
       }
+      setStatus("Ready");
+      pushHistory(); renderAll();
+    };
+    
+    $("#btn-node-combine").onclick = (evt) => {
+      evt.preventDefault();
+      nodeDropDialog.close();
+      
+      // Combine the text from source node into target node
+      const srcNode = state.nodes[dropContext.sourceId];
+      const tgtNode = state.nodes[dropContext.targetId];
+      const existingTitle = tgtNode.title || "";
+      const sourceTitle = srcNode.title || "";
+      
+      // Combine with a space separator
+      tgtNode.title = (existingTitle + " " + sourceTitle).trim();
+      
+      // Store parent ID before deleting the node
+      const srcParentId = srcNode.parentId;
+      
+      // Delete the source node after combining
+      deleteSubtree(dropContext.sourceId);
+      const srcParent = state.nodes[srcParentId];
+      if(srcParent){ srcParent.children = srcParent.children.filter(x => x !== dropContext.sourceId); }
+      if(state.focusId === dropContext.sourceId) state.focusId = state.rootId;
+      
+      toast("Combined text and removed source node","ok");
+      setStatus("Ready");
+      pushHistory(); renderAll();
+    };
+    
+    // Show the dialog
+    if(typeof nodeDropDialog.showModal === "function"){ 
+      nodeDropDialog.showModal(); 
+    } else { 
+      alert("Your browser does not support <dialog>."); 
     }
+    
     setStatus("Ready");
     dragSeg = null;
-    pushHistory(); renderAll();
   }
   function updateDragVisual(target){
     if(dragOverTarget && (!target || dragOverTarget.id !== target.id)){
@@ -1364,6 +1436,7 @@ dialog textarea{ resize:vertical; }
   const newDialog = $("#new-argument-dialog");
   const linkDialog = $("#link-argument-dialog");
   const chunkDropDialog = $("#chunk-drop-dialog");
+  const nodeDropDialog = $("#node-drop-dialog");
 
   function fillCategorySelect(sel, selectedId){
     sel.innerHTML = "";
@@ -1940,7 +2013,7 @@ dialog textarea{ resize:vertical; }
   // ---------- Keyboard ----------
   window.addEventListener("keydown", (e)=>{
     if(e.key==="Escape"){
-      [editDialog,newDialog,linkDialog,chunkDropDialog].forEach(d=> d.open && d.close());
+      [editDialog,newDialog,linkDialog,chunkDropDialog,nodeDropDialog].forEach(d=> d.open && d.close());
     }
   });
 
