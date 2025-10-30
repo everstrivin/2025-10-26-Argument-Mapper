@@ -559,6 +559,16 @@ dialog textarea{ resize:vertical; }
   const ringWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ring-width")) || 64;
   const ringGap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ring-gap")) || 2.5;
 
+  function countDescendants(nodeId){
+    const node = state.nodes[nodeId];
+    if(!node || !node.children || node.children.length === 0) return 0;
+    let count = node.children.length;
+    for(const childId of node.children){
+      count += countDescendants(childId);
+    }
+    return count;
+  }
+
   function buildHierarchy(rootId){
     const nodes = state.nodes;
     const annotated = {};
@@ -568,11 +578,23 @@ dialog textarea{ resize:vertical; }
       const kids = node.children || [];
       const span = a1 - a0;
       const n = kids.length;
-      for(let i=0;i<n;i++){
+      
+      if(n === 0) return;
+      
+      // Calculate progeny (descendants) count for each child
+      // Formula: 1 (the child itself) + count of all its descendants
+      const progenyCount = kids.map(kId => 1 + countDescendants(kId));
+      const totalProgeny = progenyCount.reduce((sum, count) => sum + count, 0);
+      
+      // Allocate space proportionally based on progeny count
+      let currentAngle = a0;
+      for(let i=0; i<n; i++){
         const kId = kids[i];
-        const k0 = a0 + span * (i/n);
-        const k1 = a0 + span * ((i+1)/n);
+        const proportion = progenyCount[i] / totalProgeny;
+        const k0 = currentAngle;
+        const k1 = currentAngle + span * proportion;
         assignAngles(kId, k0, k1, depth+1);
+        currentAngle = k1;
       }
     }
     assignAngles(rootId, 0, Math.PI*2, 0);
