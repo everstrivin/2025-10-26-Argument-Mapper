@@ -36,7 +36,7 @@ body {
 .app-header button{ margin-right:8px; }
 .app{
   display:grid;
-  grid-template-columns: 320px 1fr 360px;
+  grid-template-columns: 280px 320px 1fr 360px;
   gap:12px;
   padding:12px;
   height: calc(100vh - 60px);
@@ -49,6 +49,29 @@ body {
   display:flex; flex-direction:column;
   min-height:0;
 }
+
+/* Projects */
+.projects h2 { padding:12px; margin:0; border-bottom:1px solid #e2e8f0; }
+.project-controls{ display:flex; gap:8px; padding:8px 12px; border-bottom:1px solid #e2e8f0; }
+.project-controls input{ flex:1; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; outline:none; }
+.project-controls input:focus{ border-color:var(--accent); }
+.project-list{
+  overflow:auto; padding:8px 12px; display:flex; flex-direction:column; gap:6px;
+  flex:1;
+}
+.project-item{
+  background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;
+  display:flex; justify-content:space-between; align-items:center; gap:8px;
+  cursor:pointer; transition: all 0.15s ease;
+}
+.project-item:hover{ background:#f1f5f9; border-color:#cbd5e1; }
+.project-item.active{ background:#eef2ff; border-color:var(--accent); border-width:2px; padding:9px 11px; }
+.project-item .name{ flex:1; font-size:14px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.project-item button.delete-project{ 
+  padding:4px 8px; font-size:11px; opacity:0; transition: opacity 0.15s ease;
+  background:#fee; border-color:#fcc; color:#c00;
+}
+.project-item:hover button.delete-project{ opacity:1; }
 
 /* Inbox */
 .inbox h2 { padding:12px; margin:0; border-bottom:1px solid #e2e8f0; }
@@ -259,6 +282,16 @@ dialog textarea{ resize:vertical; }
   </header>
 
   <main class="app">
+    <!-- Projects Catalogue -->
+    <section class="panel projects">
+      <h2>Projects</h2>
+      <div class="project-controls">
+        <input id="new-project-name" placeholder="New project name" />
+        <button id="btn-add-project" title="Create new project">+</button>
+      </div>
+      <div class="project-list" id="project-list"></div>
+    </section>
+
     <!-- Inbox / Chunker -->
     <section class="panel inbox">
       <h2>Chunk Inbox</h2>
@@ -482,12 +515,172 @@ dialog textarea{ resize:vertical; }
 
   function saveToStorage(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(exportState(true)));
+    // Also save current project if one is active
+    if(currentProjectId && projects[currentProjectId]){
+      saveCurrentProject();
+    }
   }
   function loadFromStorage(){
     const raw = localStorage.getItem(STORAGE_KEY);
     if(!raw) return null;
     try{ return JSON.parse(raw); } catch{ return null; }
   }
+
+  // ---------- Project Management ----------
+  const PROJECTS_KEY = "argumentRingsProjects_v1";
+  const CURRENT_PROJECT_KEY = "argumentRingsCurrentProject_v1";
+  let projects = {};
+  let currentProjectId = null;
+
+  function loadProjects(){
+    const raw = localStorage.getItem(PROJECTS_KEY);
+    if(!raw) return {};
+    try{ return JSON.parse(raw); } catch{ return {}; }
+  }
+
+  function saveProjects(){
+    localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+  }
+
+  function getCurrentProjectId(){
+    return localStorage.getItem(CURRENT_PROJECT_KEY);
+  }
+
+  function setCurrentProjectId(id){
+    currentProjectId = id;
+    if(id){
+      localStorage.setItem(CURRENT_PROJECT_KEY, id);
+    } else {
+      localStorage.removeItem(CURRENT_PROJECT_KEY);
+    }
+  }
+
+  function saveCurrentProject(){
+    if(!currentProjectId) return;
+    const projectData = exportState(true);
+    projects[currentProjectId].data = projectData;
+    projects[currentProjectId].lastModified = now();
+    saveProjects();
+  }
+
+  function loadProject(projectId){
+    if(!projects[projectId]) return;
+    
+    // Save current project before switching
+    if(currentProjectId && projects[currentProjectId]){
+      saveCurrentProject();
+    }
+    
+    // Load new project
+    const project = projects[projectId];
+    if(project.data){
+      importState(project.data, {silent:true});
+    }
+    
+    setCurrentProjectId(projectId);
+    renderAll();
+    renderProjects();
+    toast(`Loaded project: ${project.name}`, "ok");
+  }
+
+  function createProject(name){
+    if(!name || !name.trim()) return toast("Project name required","warn");
+    
+    // Save current project first
+    if(currentProjectId && projects[currentProjectId]){
+      saveCurrentProject();
+    }
+    
+    const id = uid();
+    projects[id] = {
+      id,
+      name: name.trim(),
+      created: now(),
+      lastModified: now(),
+      data: exportState(true)
+    };
+    
+    setCurrentProjectId(id);
+    saveProjects();
+    renderProjects();
+    toast(`Created project: ${name}`, "ok");
+  }
+
+  function deleteProject(projectId){
+    if(!projects[projectId]) return;
+    const projectName = projects[projectId].name;
+    
+    if(!confirm(`Delete project "${projectName}"? This cannot be undone.`)) return;
+    
+    delete projects[projectId];
+    
+    // If deleting current project, clear current project ID
+    if(currentProjectId === projectId){
+      setCurrentProjectId(null);
+    }
+    
+    saveProjects();
+    renderProjects();
+    toast(`Deleted project: ${projectName}`, "ok");
+  }
+
+  function renderProjects(){
+    const projectList = $("#project-list");
+    projectList.innerHTML = "";
+    
+    const projectIds = Object.keys(projects);
+    if(projectIds.length === 0){
+      projectList.innerHTML = '<div style="padding:20px; text-align:center; color:var(--muted); font-size:13px;">No projects yet.<br>Create one above!</div>';
+      return;
+    }
+    
+    // Sort by last modified (most recent first)
+    projectIds.sort((a,b) => projects[b].lastModified - projects[a].lastModified);
+    
+    projectIds.forEach(id => {
+      const project = projects[id];
+      const item = document.createElement("div");
+      item.className = "project-item";
+      if(id === currentProjectId) item.classList.add("active");
+      
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "name";
+      nameSpan.textContent = project.name;
+      nameSpan.title = project.name;
+      
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "delete-project";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.onclick = (e) => {
+        e.stopPropagation();
+        deleteProject(id);
+      };
+      
+      item.appendChild(nameSpan);
+      item.appendChild(deleteBtn);
+      
+      item.onclick = () => loadProject(id);
+      
+      projectList.appendChild(item);
+    });
+  }
+
+  // Project UI handlers
+  $("#btn-add-project").addEventListener("click", ()=>{
+    const input = $("#new-project-name");
+    const name = input.value.trim();
+    if(name){
+      createProject(name);
+      input.value = "";
+    }
+  });
+
+  $("#new-project-name").addEventListener("keypress", (e)=>{
+    if(e.key === "Enter"){
+      e.preventDefault();
+      $("#btn-add-project").click();
+    }
+  });
 
   // ---------- Data Model ----------
   const state = {
@@ -2158,10 +2351,25 @@ dialog textarea{ resize:vertical; }
 
   // ---------- Init ----------
   (function init(){
-    const saved = loadFromStorage();
-    if(saved){ try{ importState(saved, {silent:true}); }catch{} }
+    // Load projects first
+    projects = loadProjects();
+    currentProjectId = getCurrentProjectId();
+    
+    // If we have a current project, load it
+    if(currentProjectId && projects[currentProjectId]){
+      const project = projects[currentProjectId];
+      if(project.data){
+        try{ importState(project.data, {silent:true}); }catch{}
+      }
+    } else {
+      // Otherwise load from old storage format
+      const saved = loadFromStorage();
+      if(saved){ try{ importState(saved, {silent:true}); }catch{} }
+    }
+    
     ensureDefaults();
     renderCategories();
+    renderProjects();
     homeView();
     applyView();
     renderAll();
