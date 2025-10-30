@@ -784,6 +784,8 @@ dialog textarea{ resize:vertical; }
       tooltip.style.opacity = "1";
       tooltip.setAttribute("aria-hidden", "false");
       el.classList.add("hover");
+      // Bring element to front by re-appending it to parent
+      el.parentNode.appendChild(el);
     });
     el.addEventListener("mouseleave", ()=>{
       tooltipActiveId = null;
@@ -1007,6 +1009,8 @@ dialog textarea{ resize:vertical; }
     }
     if(target){
       target.el.classList.add("drop-target");
+      // Bring element to front by re-appending it to parent
+      target.el.parentNode.appendChild(target.el);
       dragOverTarget = target;
     }
   }
