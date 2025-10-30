@@ -1595,11 +1595,8 @@ dialog textarea{ resize:vertical; }
     }
     const f = state.nodes[state.focusId];
 
-    // Focus path
-    const path = [];
-    let cur = f;
-    while(cur){ path.unshift(cur.id); cur = state.nodes[cur.parentId]; }
-    focusPath.textContent = path.map(id=> state.nodes[id].title || "Root").join(" › ");
+    // Focus path - show only the focused node's title
+    focusPath.textContent = f.title || "Root";
 
     // Parent
     treeParent.innerHTML="";
