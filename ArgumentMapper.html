@@ -582,6 +582,7 @@ dialog textarea{ resize:vertical; }
       if(n === 0) return;
       
       // Calculate progeny (descendants) count for each child
+      // Formula: 1 (the child itself) + count of all its descendants
       const progenyCount = kids.map(kId => 1 + countDescendants(kId));
       const totalProgeny = progenyCount.reduce((sum, count) => sum + count, 0);
       
