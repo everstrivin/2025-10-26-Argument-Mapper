@@ -976,9 +976,12 @@ dialog textarea{ resize:vertical; }
       // Combine with a space separator
       tgtNode.title = (existingTitle + " " + sourceTitle).trim();
       
+      // Store parent ID before deleting the node
+      const srcParentId = srcNode.parentId;
+      
       // Delete the source node after combining
       deleteSubtree(dropContext.sourceId);
-      const srcParent = state.nodes[srcNode.parentId];
+      const srcParent = state.nodes[srcParentId];
       if(srcParent){ srcParent.children = srcParent.children.filter(x => x !== dropContext.sourceId); }
       if(state.focusId === dropContext.sourceId) state.focusId = state.rootId;
       
