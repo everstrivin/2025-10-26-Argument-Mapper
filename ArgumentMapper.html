@@ -824,6 +824,13 @@ dialog textarea{ resize:vertical; }
       tooltip.setAttribute("aria-hidden", "false");
       el.classList.add("hover");
       
+      // Position tooltip above the center of the element
+      const rect = el.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      tooltip.style.left = centerX + "px";
+      tooltip.style.top = centerY + "px";
+      
       // Bring element to front within its depth group
       const depthGroup = el.parentNode;
       if(depthGroup && depthGroup.classList && depthGroup.classList.contains('depth-group')) {
@@ -870,10 +877,6 @@ dialog textarea{ resize:vertical; }
         originalDepthGroupParent = null;
       }
     });
-    el.addEventListener("mousemove", (e)=>{
-      tooltip.style.left = (e.clientX)+"px";
-      tooltip.style.top = (e.clientY)+"px";
-    });
     el.addEventListener("click", ()=>{
       const id = el.dataset.id;
       openEditModal(id);
@@ -881,12 +884,6 @@ dialog textarea{ resize:vertical; }
     });
     el.addEventListener("pointerdown", segmentDragStart);
   }
-  svg.addEventListener("mousemove", (e)=>{
-    if(tooltipActiveId){
-      tooltip.style.left = (e.clientX)+"px";
-      tooltip.style.top = (e.clientY)+"px";
-    }
-  });
 
   // ---------- Segment Drag / Drop ----------
   let dragSeg = null;
