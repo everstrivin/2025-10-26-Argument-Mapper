@@ -680,28 +680,57 @@ dialog textarea{ resize:vertical; }
     centerDot.setAttribute("r", r0*0.7);
     viewport.appendChild(centerDot);
 
+    // Group segments by depth for proper z-ordering
+    const depthGroups = new Map();
     const layers = new Map();
     const placeholders = [];
     
+    // First pass: collect all segments and group by depth
+    const segmentsByDepth = new Map();
     Object.entries(layout).forEach(([id, l])=>{
       const node = state.nodes[id];
       const depth = l.depth;
       
-      // Render actual segments for non-root nodes
+      // Collect actual segments for non-root nodes
       if(id !== state.rootId) {
+        if(!segmentsByDepth.has(depth)) segmentsByDepth.set(depth, []);
+        segmentsByDepth.get(depth).push({ id, node, layout: l, depth });
+      }
+    });
+    
+    // Second pass: render segments in depth order (inner to outer)
+    const sortedDepths = Array.from(segmentsByDepth.keys()).sort((a, b) => a - b);
+    sortedDepths.forEach(depth => {
+      // Create a group element for this depth level
+      const depthGroup = document.createElementNS("http://www.w3.org/2000/svg","g");
+      depthGroup.setAttribute("class", `depth-group depth-${depth}`);
+      depthGroup.setAttribute("data-depth", depth);
+      viewport.appendChild(depthGroup);
+      depthGroups.set(depth, depthGroup);
+      
+      // Render all segments at this depth
+      const segments = segmentsByDepth.get(depth);
+      segments.forEach(({id, node, layout: l}) => {
         const rInner = r0 + (depth-1)*(ringWidth + ringGap);
         const rOuter = rInner + ringWidth;
         const pathEl = document.createElementNS("http://www.w3.org/2000/svg","path");
         pathEl.setAttribute("class", "segment");
         pathEl.setAttribute("fill", colorFor(node));
         pathEl.setAttribute("data-id", id);
+        pathEl.setAttribute("data-depth", depth);
         pathEl.setAttribute("d", annularPath(cx, cy, rInner, rOuter, l.a0, l.a1));
         addSegmentListeners(pathEl);
-        viewport.appendChild(pathEl);
+        depthGroup.appendChild(pathEl);
 
         if(!layers.has(depth)) layers.set(depth, []);
         layers.get(depth).push({ id, depth, a0:l.a0, a1:l.a1, rInner, rOuter, el: pathEl });
-      }
+      });
+    });
+    
+    // Third pass: add placeholders
+    Object.entries(layout).forEach(([id, l])=>{
+      const node = state.nodes[id];
+      const depth = l.depth;
       
       // Add placeholder ring for nodes without children (including root)
       if(!node.children || node.children.length === 0){
@@ -721,7 +750,13 @@ dialog textarea{ resize:vertical; }
         placeholderEl._parentId = id;
         placeholderEl.style.cursor = "pointer";
         placeholderEl.addEventListener("click", handlePlaceholderClick);
-        viewport.appendChild(placeholderEl);
+        
+        // Append to appropriate depth group or viewport
+        if(depthGroups.has(childDepth)) {
+          depthGroups.get(childDepth).appendChild(placeholderEl);
+        } else {
+          viewport.appendChild(placeholderEl);
+        }
         placeholders.push(placeholderEl);
         
         // Add a plus icon in the center of the placeholder ring
@@ -766,6 +801,7 @@ dialog textarea{ resize:vertical; }
 
     viewport._layers = layers;
     viewport._placeholders = placeholders;
+    viewport._depthGroups = depthGroups;
     
     // Ensure viewport reference is properly accessible for drag-drop handlers
     if (typeof window !== 'undefined') {
@@ -784,8 +820,12 @@ dialog textarea{ resize:vertical; }
       tooltip.style.opacity = "1";
       tooltip.setAttribute("aria-hidden", "false");
       el.classList.add("hover");
-      // Bring element to front by re-appending it to parent
-      el.parentNode.appendChild(el);
+      // Bring element to front within its depth group only
+      // This ensures it appears above siblings but below outer rings
+      const depthGroup = el.parentNode;
+      if(depthGroup && depthGroup.classList && depthGroup.classList.contains('depth-group')) {
+        depthGroup.appendChild(el);
+      }
     });
     el.addEventListener("mouseleave", ()=>{
       tooltipActiveId = null;
@@ -1009,8 +1049,11 @@ dialog textarea{ resize:vertical; }
     }
     if(target){
       target.el.classList.add("drop-target");
-      // Bring element to front by re-appending it to parent
-      target.el.parentNode.appendChild(target.el);
+      // Bring element to front within its depth group only
+      const depthGroup = target.el.parentNode;
+      if(depthGroup && depthGroup.classList && depthGroup.classList.contains('depth-group')) {
+        depthGroup.appendChild(target.el);
+      }
       dragOverTarget = target;
     }
   }
