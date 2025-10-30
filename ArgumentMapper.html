@@ -387,6 +387,18 @@ dialog textarea{ resize:vertical; }
     </form>
   </dialog>
 
+  <dialog id="chunk-drop-dialog">
+    <form method="dialog" id="chunk-drop-form">
+      <h3>Add Chunk to Node</h3>
+      <p id="chunk-drop-message" style="margin: 8px 0; color: var(--muted); font-size: 14px;">How would you like to add this chunk?</p>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button id="btn-chunk-sibling" class="primary" value="sibling">Add as Sibling</button>
+        <button id="btn-chunk-combine" class="primary" value="combine">Combine with Existing</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast-container" aria-live="polite"></div>
 
   <script>
@@ -1351,6 +1363,7 @@ dialog textarea{ resize:vertical; }
   const editDialog = $("#edit-argument-dialog");
   const newDialog = $("#new-argument-dialog");
   const linkDialog = $("#link-argument-dialog");
+  const chunkDropDialog = $("#chunk-drop-dialog");
 
   function fillCategorySelect(sel, selectedId){
     sel.innerHTML = "";
@@ -1662,7 +1675,7 @@ dialog textarea{ resize:vertical; }
         return;
       }
 
-      // Check for regular segment drop (add as sibling)
+      // Check for regular segment drop (show dialog to choose between sibling or combine)
       const target = viewport._lastChunkTarget || (()=>{
         const pt = svgPoint(e); return pickSegmentAt(pt.x, pt.y);
       })();
@@ -1674,26 +1687,68 @@ dialog textarea{ resize:vertical; }
       }
 
       const targetNode = state.nodes[target.id];
-      const parent = state.nodes[targetNode.parentId];
-      const newId = uid();
-      state.nodes[newId] = {
-        id: newId,
-        title: chunk.text.trim().slice(0, 240),
-        categoryId: state.catOrder[0],
-        rating: 3,
-        children:[],
-        parentId: parent.id,
-      };
-      const idx = parent.children.indexOf(targetNode.id);
-      parent.children.splice(idx+1, 0, newId);
-
-      state.inbox.splice(chIdx,1);
-      state.consumedChunkIds[chunk.id] = true;
       viewport._lastChunkTarget = null;
 
-      pushHistory();
-      renderInbox(); renderAll();
-      toast("Added as sibling and removed from inbox","ok");
+      // Show dialog to let user choose between adding as sibling or combining
+      $("#chunk-drop-message").textContent = `How would you like to add this chunk to "${targetNode.title.slice(0, 50)}${targetNode.title.length > 50 ? '...' : ''}"?`;
+      
+      // Store context for dialog handlers
+      const dropContext = {
+        chunkId,
+        chIdx,
+        chunk,
+        targetNode,
+      };
+
+      // Set up dialog button handlers
+      $("#btn-chunk-sibling").onclick = (evt)=>{
+        evt.preventDefault();
+        const parent = state.nodes[dropContext.targetNode.parentId];
+        const newId = uid();
+        state.nodes[newId] = {
+          id: newId,
+          title: dropContext.chunk.text.trim().slice(0, 240),
+          categoryId: state.catOrder[0],
+          rating: 3,
+          children:[],
+          parentId: parent.id,
+        };
+        const idx = parent.children.indexOf(dropContext.targetNode.id);
+        parent.children.splice(idx+1, 0, newId);
+
+        state.inbox.splice(dropContext.chIdx,1);
+        state.consumedChunkIds[dropContext.chunk.id] = true;
+
+        chunkDropDialog.close();
+        pushHistory();
+        renderInbox(); renderAll();
+        toast("Added as sibling and removed from inbox","ok");
+      };
+
+      $("#btn-chunk-combine").onclick = (evt)=>{
+        evt.preventDefault();
+        // Combine the chunk text with the existing node's title
+        const existingTitle = dropContext.targetNode.title || "";
+        const chunkText = dropContext.chunk.text.trim();
+        
+        // Combine with a space separator
+        dropContext.targetNode.title = (existingTitle + " " + chunkText).trim();
+
+        state.inbox.splice(dropContext.chIdx,1);
+        state.consumedChunkIds[dropContext.chunk.id] = true;
+
+        chunkDropDialog.close();
+        pushHistory();
+        renderInbox(); renderAll();
+        toast("Combined with existing node and removed from inbox","ok");
+      };
+
+      // Show the dialog
+      if(typeof chunkDropDialog.showModal === "function"){ 
+        chunkDropDialog.showModal(); 
+      } else { 
+        alert("Your browser does not support <dialog>."); 
+      }
     }
 
     // Handle node drops
@@ -1885,7 +1940,7 @@ dialog textarea{ resize:vertical; }
   // ---------- Keyboard ----------
   window.addEventListener("keydown", (e)=>{
     if(e.key==="Escape"){
-      [editDialog,newDialog,linkDialog].forEach(d=> d.open && d.close());
+      [editDialog,newDialog,linkDialog,chunkDropDialog].forEach(d=> d.open && d.close());
     }
   });
 
