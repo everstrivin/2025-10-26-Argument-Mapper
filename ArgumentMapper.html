@@ -40,6 +40,7 @@ body {
   gap:12px;
   padding:12px;
   height: calc(100vh - 60px);
+  transition: grid-template-columns 0.3s ease;
 }
 
 .panel{
@@ -51,7 +52,7 @@ body {
 }
 
 /* Projects */
-.projects h2 { padding:12px; margin:0; border-bottom:1px solid #e2e8f0; }
+.projects h2 { padding:12px; margin:0; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; }
 .project-controls{ display:flex; gap:8px; padding:8px 12px; border-bottom:1px solid #e2e8f0; }
 .project-controls input{ flex:1; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; outline:none; }
 .project-controls input:focus{ border-color:var(--accent); }
@@ -78,7 +79,7 @@ body {
 }
 
 /* Inbox */
-.inbox h2 { padding:12px; margin:0; border-bottom:1px solid #e2e8f0; }
+.inbox h2 { padding:12px; margin:0; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; }
 #chunk-input{
   width:100%; height:140px; border:none; border-bottom:1px solid #e2e8f0; padding:12px; resize:vertical; outline:none;
 }
@@ -147,7 +148,7 @@ button.small{ padding:4px 8px; font-size:12px; }
 .tree-section, .categories-section{
   background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:10px;
 }
-.tree-section h2, .categories-section h2 { margin:0 0 8px 0; }
+.tree-section h2, .categories-section h2 { margin:0 0 8px 0; display:flex; justify-content:space-between; align-items:center; }
 .focus-path{ font-size:12px; color:var(--muted); margin-bottom:6px; }
 
 /* 3-row tree aligned as two-column grid: label + list */
@@ -264,6 +265,80 @@ dialog textarea{ resize:vertical; }
   transform: scale(1.2);
   transition: transform 0.2s ease-out;
 }
+
+/* Panel minimize/expand functionality */
+.toggle-panel-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 16px;
+  color: var(--muted);
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+.toggle-panel-btn:hover {
+  color: var(--ink);
+  transform: scale(1.1);
+}
+
+.panel.minimized {
+  grid-column: span 1;
+  min-width: 40px;
+  max-width: 40px;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+.panel.minimized h2 {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  white-space: nowrap;
+  padding: 12px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.panel.minimized h2:hover {
+  background: #f8fafc;
+}
+
+.panel.minimized > *:not(h2) {
+  display: none !important;
+}
+
+.panel.minimized .toggle-panel-btn {
+  writing-mode: horizontal-tb;
+  transform: rotate(0deg);
+}
+
+/* Adjust grid when panels are minimized */
+.app[data-projects-minimized="true"] {
+  grid-template-columns: 40px 320px 1fr 360px;
+}
+
+.app[data-inbox-minimized="true"] {
+  grid-template-columns: 280px 40px 1fr 360px;
+}
+
+.app[data-tree-minimized="true"] {
+  grid-template-columns: 280px 320px 1fr 40px;
+}
+
+.app[data-projects-minimized="true"][data-inbox-minimized="true"] {
+  grid-template-columns: 40px 40px 1fr 360px;
+}
+
+.app[data-projects-minimized="true"][data-tree-minimized="true"] {
+  grid-template-columns: 40px 320px 1fr 40px;
+}
+
+.app[data-inbox-minimized="true"][data-tree-minimized="true"] {
+  grid-template-columns: 280px 40px 1fr 40px;
+}
+
+.app[data-projects-minimized="true"][data-inbox-minimized="true"][data-tree-minimized="true"] {
+  grid-template-columns: 40px 40px 1fr 40px;
+}
   </style>
 </head>
 <body>
@@ -287,8 +362,11 @@ dialog textarea{ resize:vertical; }
 
   <main class="app">
     <!-- Projects Catalogue -->
-    <section class="panel projects">
-      <h2>Projects</h2>
+    <section class="panel projects" id="projects-panel">
+      <h2>
+        <span>Projects</span>
+        <button class="toggle-panel-btn" id="toggle-projects" title="Minimize panel">◀</button>
+      </h2>
       <div class="project-controls">
         <input id="new-project-name" placeholder="New project name" />
         <button id="btn-add-project" title="Create new project">+</button>
@@ -297,8 +375,11 @@ dialog textarea{ resize:vertical; }
     </section>
 
     <!-- Inbox / Chunker -->
-    <section class="panel inbox">
-      <h2>Chunk Inbox</h2>
+    <section class="panel inbox" id="inbox-panel">
+      <h2>
+        <span>Chunk Inbox</span>
+        <button class="toggle-panel-btn" id="toggle-inbox" title="Minimize panel">◀</button>
+      </h2>
       <textarea id="chunk-input" placeholder="Paste longform text here..."></textarea>
       <div class="chunker-controls">
         <button id="btn-smart-chunk">Smart Chunk</button>
@@ -334,9 +415,12 @@ dialog textarea{ resize:vertical; }
     </section>
 
     <!-- Right: Tree + Categories -->
-    <section class="panel right">
+    <section class="panel right" id="tree-panel">
       <div class="tree-section">
-        <h2>Focused Node</h2>
+        <h2>
+          <span>Focused Node</span>
+          <button class="toggle-panel-btn" id="toggle-tree" title="Minimize panel">▶</button>
+        </h2>
         <div id="focus-path" class="focus-path"></div>
         <div class="tree-rows">
           <div class="tree-row">
@@ -2376,6 +2460,109 @@ dialog textarea{ resize:vertical; }
     renderAll();
     pushHistory();
   })();
+
+  // ---------- Panel Minimize/Expand ----------
+  const PANEL_STATE_KEY = "argumentRingsPanelStates_v1";
+  
+  function loadPanelStates() {
+    const raw = localStorage.getItem(PANEL_STATE_KEY);
+    if(!raw) return { projects: false, inbox: false, tree: false };
+    try { 
+      return JSON.parse(raw); 
+    } catch { 
+      return { projects: false, inbox: false, tree: false }; 
+    }
+  }
+  
+  function savePanelStates() {
+    const states = {
+      projects: $("#projects-panel").classList.contains("minimized"),
+      inbox: $("#inbox-panel").classList.contains("minimized"),
+      tree: $("#tree-panel").classList.contains("minimized")
+    };
+    localStorage.setItem(PANEL_STATE_KEY, JSON.stringify(states));
+  }
+  
+  function togglePanel(panelName, panel, btn, appContainer) {
+    const isMinimized = panel.classList.toggle("minimized");
+    
+    if(isMinimized) {
+      appContainer.dataset[`${panelName}Minimized`] = "true";
+      btn.textContent = panelName === "tree" ? "◀" : "▶";
+      btn.title = "Expand panel";
+    } else {
+      appContainer.dataset[`${panelName}Minimized`] = "false";
+      btn.textContent = panelName === "tree" ? "▶" : "◀";
+      btn.title = "Minimize panel";
+    }
+    
+    savePanelStates();
+  }
+  
+  function initPanelToggles() {
+    const savedStates = loadPanelStates();
+    const appContainer = document.querySelector(".app");
+    
+    // Projects panel
+    const projectsPanel = $("#projects-panel");
+    const projectsBtn = $("#toggle-projects");
+    if(savedStates.projects) {
+      projectsPanel.classList.add("minimized");
+      appContainer.dataset.projectsMinimized = "true";
+      projectsBtn.textContent = "▶";
+      projectsBtn.title = "Expand panel";
+    }
+    projectsBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      togglePanel("projects", projectsPanel, projectsBtn, appContainer);
+    });
+    projectsPanel.querySelector("h2").addEventListener("click", () => {
+      if(projectsPanel.classList.contains("minimized")) {
+        togglePanel("projects", projectsPanel, projectsBtn, appContainer);
+      }
+    });
+    
+    // Inbox panel
+    const inboxPanel = $("#inbox-panel");
+    const inboxBtn = $("#toggle-inbox");
+    if(savedStates.inbox) {
+      inboxPanel.classList.add("minimized");
+      appContainer.dataset.inboxMinimized = "true";
+      inboxBtn.textContent = "▶";
+      inboxBtn.title = "Expand panel";
+    }
+    inboxBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      togglePanel("inbox", inboxPanel, inboxBtn, appContainer);
+    });
+    inboxPanel.querySelector("h2").addEventListener("click", () => {
+      if(inboxPanel.classList.contains("minimized")) {
+        togglePanel("inbox", inboxPanel, inboxBtn, appContainer);
+      }
+    });
+    
+    // Tree panel
+    const treePanel = $("#tree-panel");
+    const treeBtn = $("#toggle-tree");
+    if(savedStates.tree) {
+      treePanel.classList.add("minimized");
+      appContainer.dataset.treeMinimized = "true";
+      treeBtn.textContent = "◀";
+      treeBtn.title = "Expand panel";
+    }
+    treeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      togglePanel("tree", treePanel, treeBtn, appContainer);
+    });
+    treePanel.querySelector("h2").addEventListener("click", () => {
+      if(treePanel.classList.contains("minimized")) {
+        togglePanel("tree", treePanel, treeBtn, appContainer);
+      }
+    });
+  }
+  
+  // Initialize panel toggles after DOM is ready
+  initPanelToggles();
 
   function renderAll(){
     applyView();
