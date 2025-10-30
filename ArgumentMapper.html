@@ -811,6 +811,7 @@ dialog textarea{ resize:vertical; }
 
   // ---------- Tooltip ----------
   let tooltipActiveId = null;
+  let originalDepthGroupParent = null; // Track original position for restoration
   function addSegmentListeners(el){
     el.addEventListener("mouseenter", ()=>{
       const id = el.dataset.id;
@@ -820,11 +821,19 @@ dialog textarea{ resize:vertical; }
       tooltip.style.opacity = "1";
       tooltip.setAttribute("aria-hidden", "false");
       el.classList.add("hover");
-      // Bring element to front within its depth group only
-      // This ensures it appears above siblings but below outer rings
+      
+      // Bring element to front within its depth group
       const depthGroup = el.parentNode;
       if(depthGroup && depthGroup.classList && depthGroup.classList.contains('depth-group')) {
         depthGroup.appendChild(el);
+        
+        // Also bring the entire depth group to the front so it appears above children
+        // Store the next sibling to restore position later
+        originalDepthGroupParent = {
+          group: depthGroup,
+          nextSibling: depthGroup.nextSibling
+        };
+        viewport.appendChild(depthGroup);
       }
     });
     el.addEventListener("mouseleave", ()=>{
@@ -832,6 +841,32 @@ dialog textarea{ resize:vertical; }
       tooltip.style.opacity = "0";
       tooltip.setAttribute("aria-hidden", "true");
       el.classList.remove("hover");
+      
+      // Restore the depth group to its original position
+      if(originalDepthGroupParent && originalDepthGroupParent.group) {
+        const group = originalDepthGroupParent.group;
+        const nextSib = originalDepthGroupParent.nextSibling;
+        if(nextSib && nextSib.parentNode === viewport) {
+          viewport.insertBefore(group, nextSib);
+        } else {
+          // If nextSibling is null or not in viewport, find correct position by depth
+          const groupDepth = parseInt(group.getAttribute('data-depth'));
+          const allGroups = Array.from(viewport.querySelectorAll('.depth-group'));
+          let inserted = false;
+          for(const otherGroup of allGroups) {
+            const otherDepth = parseInt(otherGroup.getAttribute('data-depth'));
+            if(otherDepth > groupDepth) {
+              viewport.insertBefore(group, otherGroup);
+              inserted = true;
+              break;
+            }
+          }
+          if(!inserted) {
+            viewport.appendChild(group);
+          }
+        }
+        originalDepthGroupParent = null;
+      }
     });
     el.addEventListener("mousemove", (e)=>{
       tooltip.style.left = (e.clientX)+"px";
@@ -1045,15 +1080,51 @@ dialog textarea{ resize:vertical; }
   function updateDragVisual(target){
     if(dragOverTarget && (!target || dragOverTarget.id !== target.id)){
       dragOverTarget.el.classList.remove("drop-target");
+      
+      // Restore the depth group to its original position
+      if(dragOverTarget._savedPosition && dragOverTarget._savedPosition.group) {
+        const group = dragOverTarget._savedPosition.group;
+        const nextSib = dragOverTarget._savedPosition.nextSibling;
+        if(nextSib && nextSib.parentNode === viewport) {
+          viewport.insertBefore(group, nextSib);
+        } else {
+          // Find correct position by depth
+          const groupDepth = parseInt(group.getAttribute('data-depth'));
+          const allGroups = Array.from(viewport.querySelectorAll('.depth-group'));
+          let inserted = false;
+          for(const otherGroup of allGroups) {
+            const otherDepth = parseInt(otherGroup.getAttribute('data-depth'));
+            if(otherDepth > groupDepth) {
+              viewport.insertBefore(group, otherGroup);
+              inserted = true;
+              break;
+            }
+          }
+          if(!inserted) {
+            viewport.appendChild(group);
+          }
+        }
+        dragOverTarget._savedPosition = null;
+      }
+      
       dragOverTarget = null;
     }
     if(target){
       target.el.classList.add("drop-target");
-      // Bring element to front within its depth group only
+      
+      // Bring element to front within its depth group
       const depthGroup = target.el.parentNode;
       if(depthGroup && depthGroup.classList && depthGroup.classList.contains('depth-group')) {
         depthGroup.appendChild(target.el);
+        
+        // Also bring the entire depth group to the front
+        target._savedPosition = {
+          group: depthGroup,
+          nextSibling: depthGroup.nextSibling
+        };
+        viewport.appendChild(depthGroup);
       }
+      
       dragOverTarget = target;
     }
   }
