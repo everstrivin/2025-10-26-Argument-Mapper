@@ -741,6 +741,33 @@ dialog textarea{ resize:vertical; }
     </form>
   </dialog>
 
+  <dialog id="new-project-dialog">
+    <form method="dialog" id="new-project-form">
+      <h3>Create New Project</h3>
+      <p style="margin: 8px 0; color: var(--muted); font-size: 14px;">How would you like to start your new project?</p>
+      <div class="dialog-actions" style="flex-direction: column; gap: 12px;">
+        <button id="btn-project-blank" class="primary" style="width: 100%;" value="blank">Start with Blank Project</button>
+        <button id="btn-project-copy-all" class="primary" style="width: 100%;" value="copy-all">Copy from Existing Project (All Data)</button>
+        <button id="btn-project-copy-sources" class="primary" style="width: 100%;" value="copy-sources">Copy from Existing Project (Sources Only)</button>
+        <button value="cancel" style="width: 100%;">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="select-project-dialog">
+    <form method="dialog" id="select-project-form">
+      <h3>Select Source Project</h3>
+      <label>Choose a project to copy from:
+        <select id="source-project-select" style="margin-top: 8px; padding: 8px; width: 100%; border: 1px solid #e2e8f0; border-radius: 8px;">
+        </select>
+      </label>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button id="btn-select-project-confirm" class="primary" value="confirm">Continue</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast-container" aria-live="polite"></div>
 
   <script>
@@ -878,7 +905,7 @@ dialog textarea{ resize:vertical; }
     toast(`Loaded project: ${project.name}`, "ok");
   }
 
-  function createProject(name){
+  function createProject(name, mode, sourceProjectId){
     if(!name || !name.trim()) return toast("Project name required","warn");
     
     // Save current project first
@@ -887,18 +914,102 @@ dialog textarea{ resize:vertical; }
     }
     
     const id = uid();
+    let projectData;
+    
+    // Determine what data to use based on mode
+    if(mode === "blank"){
+      // Create a completely blank project with default state
+      projectData = createBlankState();
+    } else if(mode === "copy-all" && sourceProjectId && projects[sourceProjectId]){
+      // Copy all data from the source project
+      projectData = deepClone(projects[sourceProjectId].data);
+    } else if(mode === "copy-sources" && sourceProjectId && projects[sourceProjectId]){
+      // Copy only sources (categories and inbox) from source project, but blank the ring
+      const sourceData = projects[sourceProjectId].data;
+      projectData = createBlankState();
+      
+      // Copy categories if they exist
+      if(sourceData.categories){
+        projectData.categories = deepClone(sourceData.categories);
+        projectData.catOrder = deepClone(sourceData.catOrder);
+      }
+      
+      // Copy inbox if it exists
+      if(sourceData.inbox){
+        projectData.inbox = deepClone(sourceData.inbox);
+      }
+      
+      // Copy consumed chunks tracking
+      if(sourceData.consumedChunkIds){
+        projectData.consumedChunkIds = deepClone(sourceData.consumedChunkIds);
+      }
+    } else {
+      // Fallback to current state if mode is unrecognized or source is missing
+      projectData = exportState(true);
+    }
+    
     projects[id] = {
       id,
       name: name.trim(),
       created: now(),
       lastModified: now(),
-      data: exportState(true)
+      data: projectData
     };
+    
+    // Load the new project
+    importState(projectData, {silent:true});
     
     setCurrentProjectId(id);
     saveProjects();
     renderProjects();
+    renderAll();
     toast(`Created project: ${name}`, "ok");
+  }
+
+  function createBlankState(){
+    // Create a minimal blank state with default categories and root node
+    const blankState = {
+      categories: {},
+      catOrder: [],
+      rootId: null,
+      nodes: {},
+      focusId: null,
+      inbox: [],
+      consumedChunkIds: {},
+      view: { panX: 0, panY: 0, zoom: 1 }
+    };
+    
+    // Add default categories
+    const defaults = [
+      ["Pro", "#22c55e"],
+      ["Con", "#ef4444"],
+      ["Fallacy", "#f59e0b"],
+      ["Deductive", "#3b82f6"],
+      ["Inductive", "#8b5cf6"],
+      ["Abductive", "#14b8a6"],
+    ];
+    defaults.forEach(([name, color])=>{
+      const id = uid();
+      blankState.categories[id] = {id, name, colorHex: color};
+      blankState.catOrder.push(id);
+    });
+    
+    // Add root node
+    const rootId = uid();
+    const root = { 
+      id: rootId, 
+      title: "Root", 
+      source: "", 
+      categoryId: blankState.catOrder[0], 
+      rating: 3, 
+      children: [], 
+      parentId: null 
+    };
+    blankState.rootId = rootId;
+    blankState.nodes[rootId] = root;
+    blankState.focusId = rootId;
+    
+    return blankState;
   }
 
   function deleteProject(projectId){
@@ -961,11 +1072,26 @@ dialog textarea{ resize:vertical; }
   }
 
   // Project UI handlers
+  let pendingProjectName = null;
+  let projectCreationMode = null;
+  let sourceProjectForCopy = null;
+
   $("#btn-add-project").addEventListener("click", ()=>{
     const input = $("#new-project-name");
     const name = input.value.trim();
-    if(name){
-      createProject(name);
+    if(!name){
+      toast("Project name required","warn");
+      return;
+    }
+    
+    // Store the project name and show the mode selection dialog
+    pendingProjectName = name;
+    const newProjectDialog = $("#new-project-dialog");
+    if(typeof newProjectDialog.showModal === "function"){
+      newProjectDialog.showModal();
+    } else {
+      // Fallback for browsers without dialog support
+      createProject(name, "blank", null);
       input.value = "";
     }
   });
@@ -976,6 +1102,87 @@ dialog textarea{ resize:vertical; }
       $("#btn-add-project").click();
     }
   });
+
+  // New project dialog handlers
+  $("#btn-project-blank").addEventListener("click", (e)=>{
+    e.preventDefault();
+    const dialog = $("#new-project-dialog");
+    dialog.close();
+    createProject(pendingProjectName, "blank", null);
+    $("#new-project-name").value = "";
+    pendingProjectName = null;
+  });
+
+  $("#btn-project-copy-all").addEventListener("click", (e)=>{
+    e.preventDefault();
+    projectCreationMode = "copy-all";
+    $("#new-project-dialog").close();
+    showProjectSelectionDialog();
+  });
+
+  $("#btn-project-copy-sources").addEventListener("click", (e)=>{
+    e.preventDefault();
+    projectCreationMode = "copy-sources";
+    $("#new-project-dialog").close();
+    showProjectSelectionDialog();
+  });
+
+  $("#btn-select-project-confirm").addEventListener("click", (e)=>{
+    e.preventDefault();
+    const select = $("#source-project-select");
+    sourceProjectForCopy = select.value;
+    $("#select-project-dialog").close();
+    
+    if(!sourceProjectForCopy){
+      toast("No project selected","warn");
+      return;
+    }
+    
+    createProject(pendingProjectName, projectCreationMode, sourceProjectForCopy);
+    $("#new-project-name").value = "";
+    pendingProjectName = null;
+    projectCreationMode = null;
+    sourceProjectForCopy = null;
+  });
+
+  function showProjectSelectionDialog(){
+    const select = $("#source-project-select");
+    select.innerHTML = "";
+    
+    const projectIds = Object.keys(projects);
+    if(projectIds.length === 0){
+      toast("No existing projects to copy from","warn");
+      // Fall back to blank project
+      createProject(pendingProjectName, "blank", null);
+      $("#new-project-name").value = "";
+      pendingProjectName = null;
+      projectCreationMode = null;
+      return;
+    }
+    
+    // Sort by last modified (most recent first)
+    projectIds.sort((a,b) => projects[b].lastModified - projects[a].lastModified);
+    
+    projectIds.forEach(id => {
+      const project = projects[id];
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = project.name;
+      if(id === currentProjectId) {
+        opt.textContent += " (current)";
+        opt.selected = true;
+      }
+      select.appendChild(opt);
+    });
+    
+    const dialog = $("#select-project-dialog");
+    if(typeof dialog.showModal === "function"){
+      dialog.showModal();
+    } else {
+      // Fallback for browsers without dialog support
+      alert("Your browser does not support <dialog>.");
+    }
+  }
 
   // ---------- Data Model ----------
   const state = {
