@@ -2066,6 +2066,72 @@ dialog textarea{ resize:vertical; }
     // Only handle if dragging a category
     if(!e.dataTransfer.types.includes("application/x-category-id")) return;
     e.preventDefault();
+    
+    // If dragging over empty space (not over a category), show placeholder at the end
+    const target = e.target;
+    if(target === catList || target.classList.contains("category-list-horizontal")){
+      let placeholder = catList.querySelector(".category-drag-placeholder");
+      if(!placeholder){
+        placeholder = document.createElement("div");
+        placeholder.className = "category-drag-placeholder";
+      }
+      // Append to end of list
+      catList.appendChild(placeholder);
+    }
+  });
+  
+  // Add drop handler to the category list container for dropping at the end
+  catList.addEventListener("drop", (e)=>{
+    // Only handle if dragging a category and dropped on empty space
+    if(!e.dataTransfer.types.includes("application/x-category-id")) return;
+    
+    const target = e.target;
+    if(target !== catList && !target.classList.contains("category-list-horizontal")) return;
+    
+    e.preventDefault();
+    
+    const draggedId = e.dataTransfer.getData("application/x-category-id");
+    if(!draggedId) {
+      const placeholder = catList.querySelector(".category-drag-placeholder");
+      if(placeholder) placeholder.remove();
+      return;
+    }
+    
+    // Get placeholder position to determine where to insert
+    const placeholder = catList.querySelector(".category-drag-placeholder");
+    if(placeholder){
+      const allElements = Array.from(catList.children);
+      const placeholderIndex = allElements.indexOf(placeholder);
+      
+      // Count how many category elements are before the placeholder
+      let categoryCountBefore = 0;
+      for(let i = 0; i < placeholderIndex; i++){
+        if(allElements[i].classList.contains("category-horizontal")){
+          categoryCountBefore++;
+        }
+      }
+      
+      const draggedIndex = state.catOrder.indexOf(draggedId);
+      
+      // Adjust for the dragged item if it's before the target position
+      let insertIndex = categoryCountBefore;
+      if(draggedIndex < categoryCountBefore){
+        insertIndex--;
+      }
+      
+      placeholder.remove();
+      
+      // Remove dragged item from array
+      state.catOrder.splice(draggedIndex, 1);
+      
+      // Insert at calculated position
+      state.catOrder.splice(insertIndex, 0, draggedId);
+      
+      pushHistory(); 
+      renderCategories(); 
+      saveToStorage();
+      toast("Category reordered","ok");
+    }
   });
 
   // ---------- Modals ----------
