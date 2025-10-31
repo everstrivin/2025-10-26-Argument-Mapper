@@ -1909,7 +1909,11 @@ dialog textarea{ resize:vertical; }
       
       // Drag leave handler
       row.addEventListener("dragleave", (e)=>{
-        row.classList.remove("drag-over");
+        // Only remove drag-over if we're actually leaving the element
+        // Check if the related target is not a child of this element
+        if(!row.contains(e.relatedTarget)){
+          row.classList.remove("drag-over");
+        }
       });
       
       // Drop handler
@@ -1926,13 +1930,23 @@ dialog textarea{ resize:vertical; }
         
         if(draggedIndex === -1 || targetIndex === -1) return;
         
+        // Calculate the final insertion index before modifying the array
+        // If dragging forward (to a higher index), insert after target
+        // If dragging backward (to a lower index), insert after target (which will be one position forward after removal)
+        let insertIndex;
+        if(draggedIndex < targetIndex){
+          // Dragging forward: after removal, target shifts back by 1, so insert at targetIndex
+          insertIndex = targetIndex;
+        } else {
+          // Dragging backward: target stays in place, so insert at targetIndex + 1
+          insertIndex = targetIndex + 1;
+        }
+        
         // Remove dragged item from array
         state.catOrder.splice(draggedIndex, 1);
         
-        // Insert at new position
-        // After removing the dragged item, recalculate target index
-        const newTargetIndex = state.catOrder.indexOf(cid);
-        state.catOrder.splice(newTargetIndex + 1, 0, draggedId);
+        // Insert at calculated position
+        state.catOrder.splice(insertIndex, 0, draggedId);
         
         pushHistory(); 
         renderCategories(); 
