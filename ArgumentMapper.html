@@ -306,6 +306,21 @@ dialog textarea{ resize:vertical; }
   display: none !important;
 }
 
+/* Special handling for tree panel which has nested structure */
+.panel.right.minimized .tree-section {
+  display: flex !important;
+  flex-direction: column;
+}
+
+.panel.right.minimized .tree-section > *:not(h2) {
+  display: none !important;
+}
+
+.panel.right.minimized .tree-section h2 {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
 .panel.minimized .toggle-panel-btn {
   writing-mode: horizontal-tb;
   transform: rotate(0deg);
