@@ -74,10 +74,18 @@ body {
 .category-horizontal.dragging{
   opacity:0.5;
 }
-.category-horizontal.drag-over{
-  border-color:var(--accent);
-  border-width:2px;
-  transform:scale(1.05);
+.category-drag-placeholder{
+  width:4px;
+  min-width:4px;
+  height:40px;
+  background:var(--accent);
+  border-radius:2px;
+  flex-shrink:0;
+  animation: pulse-placeholder 0.8s ease-in-out infinite;
+}
+@keyframes pulse-placeholder {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 .category-horizontal input[type="color"]{ 
   width:24px; height:24px; padding:0; border:none; background:none; cursor:pointer;
@@ -1896,50 +1904,100 @@ dialog textarea{ resize:vertical; }
       // Drag end handler
       row.addEventListener("dragend", (e)=>{
         row.classList.remove("dragging");
-        // Remove drag-over class from all categories
-        $$(".category-horizontal").forEach(el => el.classList.remove("drag-over"));
+        // Remove any placeholder
+        const placeholder = catList.querySelector(".category-drag-placeholder");
+        if(placeholder) placeholder.remove();
       });
       
       // Drag over handler
       row.addEventListener("dragover", (e)=>{
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
-        row.classList.add("drag-over");
+        
+        // Get or create placeholder
+        let placeholder = catList.querySelector(".category-drag-placeholder");
+        if(!placeholder){
+          placeholder = document.createElement("div");
+          placeholder.className = "category-drag-placeholder";
+        }
+        
+        // Determine if we should insert before or after this element
+        const rect = row.getBoundingClientRect();
+        const midpoint = rect.left + rect.width / 2;
+        const insertBefore = e.clientX < midpoint;
+        
+        // Insert placeholder at the appropriate position
+        if(insertBefore){
+          row.parentNode.insertBefore(placeholder, row);
+        } else {
+          // Insert after current element
+          if(row.nextSibling){
+            row.parentNode.insertBefore(placeholder, row.nextSibling);
+          } else {
+            row.parentNode.appendChild(placeholder);
+          }
+        }
       });
       
       // Drag leave handler
       row.addEventListener("dragleave", (e)=>{
-        // Only remove drag-over if we're actually leaving the element
-        // Check if the related target is not a child of this element
-        if(!e.relatedTarget || !row.contains(e.relatedTarget)){
-          row.classList.remove("drag-over");
-        }
+        // Keep placeholder visible during drag operation
       });
       
       // Drop handler
       row.addEventListener("drop", (e)=>{
         e.preventDefault();
-        row.classList.remove("drag-over");
         
         const draggedId = e.dataTransfer.getData("application/x-category-id");
-        if(!draggedId || draggedId === cid) return;
+        if(!draggedId || draggedId === cid) {
+          // Remove placeholder
+          const placeholder = catList.querySelector(".category-drag-placeholder");
+          if(placeholder) placeholder.remove();
+          return;
+        }
         
         // Get current positions
         const draggedIndex = state.catOrder.indexOf(draggedId);
         const targetIndex = state.catOrder.indexOf(cid);
         
-        if(draggedIndex === -1 || targetIndex === -1) return;
+        if(draggedIndex === -1 || targetIndex === -1) {
+          // Remove placeholder
+          const placeholder = catList.querySelector(".category-drag-placeholder");
+          if(placeholder) placeholder.remove();
+          return;
+        }
         
-        // Calculate the final insertion index before modifying the array
-        // If dragging forward (to a higher index), insert after target
-        // If dragging backward (to a lower index), insert after target (which will be one position forward after removal)
+        // Determine insertion position based on where placeholder is
+        const placeholder = catList.querySelector(".category-drag-placeholder");
         let insertIndex;
-        if(draggedIndex < targetIndex){
-          // Dragging forward: after removal, target shifts back by 1, so insert at targetIndex
-          insertIndex = targetIndex;
+        
+        if(placeholder){
+          // Find the index where placeholder is positioned
+          const allElements = Array.from(catList.children);
+          const placeholderIndex = allElements.indexOf(placeholder);
+          
+          // Count how many category elements are before the placeholder
+          let categoryCountBefore = 0;
+          for(let i = 0; i < placeholderIndex; i++){
+            if(allElements[i].classList.contains("category-horizontal")){
+              categoryCountBefore++;
+            }
+          }
+          
+          // Adjust for the dragged item if it's before the target position
+          insertIndex = categoryCountBefore;
+          if(draggedIndex < categoryCountBefore){
+            insertIndex--;
+          }
+          
+          placeholder.remove();
         } else {
-          // Dragging backward: target stays in place, so insert at targetIndex + 1
-          insertIndex = targetIndex + 1;
+          // Fallback to old logic if no placeholder
+          if(draggedIndex < targetIndex){
+            insertIndex = targetIndex;
+          } else {
+            insertIndex = targetIndex + 1;
+          }
         }
         
         // Remove dragged item from array
@@ -1982,6 +2040,13 @@ dialog textarea{ resize:vertical; }
       catList.appendChild(row);
     });
   }
+  
+  // Add dragover handler to the category list container
+  catList.addEventListener("dragover", (e)=>{
+    // Only handle if dragging a category
+    if(!e.dataTransfer.types.includes("application/x-category-id")) return;
+    e.preventDefault();
+  });
 
   // ---------- Modals ----------
   const editDialog = $("#edit-argument-dialog");
