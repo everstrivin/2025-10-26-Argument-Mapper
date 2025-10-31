@@ -156,12 +156,13 @@ body {
 /* Inbox */
 .inbox h2 { padding:12px; margin:0; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; }
 #chunk-input{
-  width:100%; height:140px; border:none; border-bottom:1px solid #e2e8f0; padding:12px; resize:vertical; outline:none;
+  width:100%; height:70px; border:none; border-bottom:1px solid #e2e8f0; padding:12px; resize:vertical; outline:none;
 }
 .chunker-controls{ display:flex; gap:8px; padding:8px 12px; border-bottom:1px solid #e2e8f0; }
 .chunker-controls button{ flex:1; }
 .chunk-list{
   overflow:auto; padding:8px 12px; display:flex; flex-direction:column; gap:8px;
+  max-height: 35vh;
 }
 .chunk{
   background:#f1f5f9; border:1px solid #e2e8f0; border-radius:10px; padding:8px;
@@ -172,6 +173,94 @@ body {
 .chunk .row-actions{ display:flex; flex-direction:column; gap:4px; align-items:flex-start; }
 .chunk .tag{ font-size:11px; color:#475569; }
 button.small{ padding:4px 8px; font-size:12px; }
+
+/* Sources Section */
+.sources-section{
+  border-top: 2px solid #e2e8f0;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+.sources-section h3{
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.sources-controls{
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.sources-controls input{
+  flex: 1;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  outline: none;
+  font-size: 13px;
+}
+.sources-controls input:focus{
+  border-color: var(--accent);
+}
+.sources-controls button{
+  font-size: 11px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+.source-list{
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+.source-item{
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.source-item:hover{
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+.source-item.active{
+  background: #eef2ff;
+  border-color: var(--accent);
+  border-width: 2px;
+}
+.source-item .name{
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-item .count{
+  font-size: 11px;
+  color: var(--muted);
+  background: #e2e8f0;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.source-list-empty{
+  padding: 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
 
 /* Rings */
 .rings{ position:relative; }
@@ -202,6 +291,11 @@ button.small{ padding:4px 8px; font-size:12px; }
   transform-origin: 0 0;
 }
 .segment.dragging{ opacity:.65; }
+.segment.highlighted-by-source{
+  stroke: #fbbf24;
+  stroke-width: 4;
+  filter: drop-shadow(0 0 8px #fbbf24);
+}
 
 .center-dot{
   fill: #334155; opacity:.2;
@@ -492,6 +586,17 @@ dialog textarea{ resize:vertical; }
         <button id="btn-clear-inbox">Clear Inbox</button>
       </div>
       <div class="chunk-list" id="chunk-list" aria-label="Chunks"></div>
+      
+      <!-- Sources Section -->
+      <div class="sources-section">
+        <h3>Sources</h3>
+        <div class="sources-controls">
+          <input id="source-filter" type="text" placeholder="Filter sources..." />
+          <button id="btn-assign-all-sources">Assign All</button>
+          <button id="btn-unassign-all-sources">Unassign All</button>
+        </div>
+        <div class="source-list" id="source-list" aria-label="Sources"></div>
+      </div>
     </section>
 
     <!-- Center: Rings -->
@@ -553,6 +658,9 @@ dialog textarea{ resize:vertical; }
       <label>Title
         <textarea id="edit-title" rows="3" required></textarea>
       </label>
+      <label>Source
+        <input id="edit-source" type="text" placeholder="Optional source reference" />
+      </label>
       <div class="two-col">
         <label>Category
           <select id="edit-category"></select>
@@ -576,6 +684,9 @@ dialog textarea{ resize:vertical; }
       <h3>New Argument</h3>
       <label>Title
         <textarea id="new-title" rows="3" required></textarea>
+      </label>
+      <label>Source
+        <input id="new-source" type="text" placeholder="Optional source reference" />
       </label>
       <div class="two-col">
         <label>Category
@@ -895,7 +1006,7 @@ dialog textarea{ resize:vertical; }
       });
     }
     if(!state.rootId){
-      const root = { id: uid(), title: "Root", categoryId: state.catOrder[0], rating: 3, children: [], parentId: null };
+      const root = { id: uid(), title: "Root", source: "", categoryId: state.catOrder[0], rating: 3, children: [], parentId: null };
       state.rootId = root.id;
       state.nodes[root.id] = root;
     }
@@ -2165,6 +2276,7 @@ dialog textarea{ resize:vertical; }
   function openEditModal(id){
     const n = state.nodes[id];
     $("#edit-title").value = n.linkTo && state.nodes[n.linkTo] ? state.nodes[n.linkTo].title : (n.title||"");
+    $("#edit-source").value = n.source || "";
     fillCategorySelect($("#edit-category"), n.categoryId);
     $("#edit-rating").value = String(n.rating || 3);
     $("#edit-rating-value").textContent = String(n.rating || 3);
@@ -2175,6 +2287,7 @@ dialog textarea{ resize:vertical; }
     $("#btn-save-node").onclick = (e)=>{
       e.preventDefault();
       const t = $("#edit-title").value.trim();
+      const src = $("#edit-source").value.trim();
       const cat = $("#edit-category").value;
       const r = parseInt($("#edit-rating").value, 10);
       if(n.linkTo && state.nodes[n.linkTo]){
@@ -2182,6 +2295,7 @@ dialog textarea{ resize:vertical; }
       } else {
         n.title = t;
       }
+      n.source = src;
       n.categoryId = cat; n.rating = r;
       editDialog.close();
       pushHistory(); renderAll(); toast("Saved","ok");
@@ -2204,10 +2318,11 @@ dialog textarea{ resize:vertical; }
     e.preventDefault();
     const title = $("#new-title").value.trim();
     if(!title){ toast("Title required","err"); return; }
+    const source = $("#new-source").value.trim();
     const categoryId = $("#new-category").value;
     const rating = parseInt($("#new-rating").value, 10);
     const id = uid();
-    const n = { id, title, categoryId, rating, children:[], parentId:null };
+    const n = { id, title, source, categoryId, rating, children:[], parentId:null };
     const ref = state.nodes[newModalContext.refId];
     if(newModalContext.mode === "child"){
       n.parentId = ref.id; ref.children.push(id);
@@ -2449,6 +2564,7 @@ dialog textarea{ resize:vertical; }
         state.nodes[newId] = {
           id: newId,
           title: chunk.text.trim().slice(0, 240),
+          source: "",
           categoryId: state.catOrder[0],
           rating: 3,
           children:[],
@@ -2499,6 +2615,7 @@ dialog textarea{ resize:vertical; }
         state.nodes[newId] = {
           id: newId,
           title: dropContext.chunk.text.trim().slice(0, 240),
+          source: "",
           categoryId: state.catOrder[0],
           rating: 3,
           children:[],
@@ -2735,6 +2852,136 @@ dialog textarea{ resize:vertical; }
     }
   });
 
+  // ---------- Sources Management ----------
+  const sourceList = $("#source-list");
+  const sourceFilter = $("#source-filter");
+  let activeSourceFilter = "";
+  let selectedSource = null;
+
+  function getAllSources(){
+    const sources = new Set();
+    Object.values(state.nodes).forEach(node => {
+      if(node.source && node.source.trim()){
+        sources.add(node.source.trim());
+      }
+    });
+    return Array.from(sources).sort();
+  }
+
+  function getNodeCountBySource(source){
+    return Object.values(state.nodes).filter(node => 
+      node.source && node.source.trim() === source
+    ).length;
+  }
+
+  function renderSources(){
+    const allSources = getAllSources();
+    const filter = activeSourceFilter.toLowerCase();
+    const filteredSources = filter ? 
+      allSources.filter(s => s.toLowerCase().includes(filter)) : 
+      allSources;
+    
+    sourceList.innerHTML = "";
+    
+    if(filteredSources.length === 0){
+      if(allSources.length === 0){
+        sourceList.innerHTML = '<div class="source-list-empty">No sources yet.<br>Add sources to nodes!</div>';
+      } else {
+        sourceList.innerHTML = '<div class="source-list-empty">No matching sources found.</div>';
+      }
+      return;
+    }
+    
+    filteredSources.forEach(source => {
+      const count = getNodeCountBySource(source);
+      const item = document.createElement("div");
+      item.className = "source-item";
+      if(selectedSource === source) item.classList.add("active");
+      
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "name";
+      nameSpan.textContent = source;
+      nameSpan.title = source;
+      
+      const countSpan = document.createElement("span");
+      countSpan.className = "count";
+      countSpan.textContent = count;
+      
+      item.appendChild(nameSpan);
+      item.appendChild(countSpan);
+      
+      item.onclick = () => {
+        if(selectedSource === source){
+          // Deselect
+          selectedSource = null;
+          highlightNodesBySource(null);
+        } else {
+          // Select
+          selectedSource = source;
+          highlightNodesBySource(source);
+        }
+        renderSources();
+      };
+      
+      sourceList.appendChild(item);
+    });
+  }
+
+  function highlightNodesBySource(source){
+    // Remove all existing highlights
+    $$(".segment").forEach(el => el.classList.remove("highlighted-by-source"));
+    
+    if(!source) return;
+    
+    // Add highlights to matching nodes
+    Object.values(state.nodes).forEach(node => {
+      if(node.source && node.source.trim() === source){
+        const segment = $(`[data-id="${node.id}"]`, viewport);
+        if(segment){
+          segment.classList.add("highlighted-by-source");
+        }
+      }
+    });
+  }
+
+  sourceFilter.addEventListener("input", (e)=>{
+    activeSourceFilter = e.target.value;
+    renderSources();
+  });
+
+  $("#btn-assign-all-sources").addEventListener("click", ()=>{
+    const source = prompt("Enter source name to assign to all nodes:");
+    if(!source || !source.trim()) return;
+    
+    const trimmedSource = source.trim();
+    let count = 0;
+    Object.values(state.nodes).forEach(node => {
+      node.source = trimmedSource;
+      count++;
+    });
+    
+    pushHistory();
+    renderAll();
+    toast(`Assigned source to ${count} nodes`, "ok");
+  });
+
+  $("#btn-unassign-all-sources").addEventListener("click", ()=>{
+    if(!confirm("Remove source from all nodes?")) return;
+    
+    let count = 0;
+    Object.values(state.nodes).forEach(node => {
+      if(node.source){
+        node.source = "";
+        count++;
+      }
+    });
+    
+    selectedSource = null;
+    pushHistory();
+    renderAll();
+    toast(`Removed source from ${count} nodes`, "ok");
+  });
+
   // ---------- Init ----------
   (function init(){
     // Load projects first
@@ -2870,6 +3117,7 @@ dialog textarea{ resize:vertical; }
     renderRings();
     renderTree();
     renderInbox();
+    renderSources();
     saveToStorage();
   }
 
@@ -2912,6 +3160,7 @@ dialog textarea{ resize:vertical; }
       const newId = uid();
       state.nodes[newId] = {
         id:newId, title: chunk.text.trim().slice(0,240),
+        source: "",
         categoryId: state.catOrder[0], rating:3, children:[], parentId
       };
       const arr = state.nodes[parentId].children;
