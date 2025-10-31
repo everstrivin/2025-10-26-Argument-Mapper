@@ -18,6 +18,8 @@
   --ring-width:64px;
   --shadow:0 8px 24px rgba(2,6,23,0.08);
   --radius:14px;
+  --header-height:60px;
+  --categories-bar-height:66px;
 }
 
 * { box-sizing: border-box; }
@@ -39,7 +41,7 @@ body {
 .categories-bar{
   background:#fff; box-shadow: var(--shadow); padding:12px;
   display:flex; align-items:flex-start; gap:12px;
-  position: sticky; top:60px; z-index:9;
+  position: sticky; top:var(--header-height); z-index:9;
 }
 .category-controls{
   display:flex; align-items:center; gap:8px; flex-shrink:0;
@@ -82,7 +84,7 @@ body {
   grid-template-columns: 280px 320px 1fr 360px;
   gap:12px;
   padding:12px;
-  height: calc(100vh - 60px - 66px);
+  height: calc(100vh - var(--header-height) - var(--categories-bar-height));
   transition: grid-template-columns 0.3s ease;
 }
 
@@ -1890,14 +1892,17 @@ dialog textarea{ resize:vertical; }
         state.catOrder = state.catOrder.filter(x=>x!==cid);
         pushHistory(); renderCategories();
       });
+      del.setAttribute("aria-label", "Delete category");
       const up = button("↑","small", ()=>{
         const i = state.catOrder.indexOf(cid);
         if(i>0){ [state.catOrder[i-1], state.catOrder[i]] = [state.catOrder[i], state.catOrder[i-1]]; renderCategories(); saveToStorage(); }
       });
+      up.setAttribute("aria-label", "Move category up");
       const down = button("↓","small", ()=>{
         const i = state.catOrder.indexOf(cid);
         if(i<state.catOrder.length-1){ [state.catOrder[i+1], state.catOrder[i]] = [state.catOrder[i], state.catOrder[i+1]]; renderCategories(); saveToStorage(); }
       });
+      down.setAttribute("aria-label", "Move category down");
 
       actionsInline.append(up, down, del);
       row.append(color, name, actionsInline);
