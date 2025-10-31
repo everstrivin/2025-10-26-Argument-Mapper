@@ -667,7 +667,7 @@ dialog textarea{ resize:vertical; }
   const history = { stack: [], cursor: -1, pushing: false };
   function pushHistory(){
     if(history.pushing) return;
-    const snapshot = exportState(true);
+    const snapshot = deepClone(exportState(true));
     history.stack = history.stack.slice(0, history.cursor+1);
     history.stack.push(snapshot);
     if(history.stack.length > UNDO_LIMIT){ history.stack.shift(); }
