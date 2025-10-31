@@ -65,6 +65,19 @@ body {
   display:flex; align-items:center; gap:6px;
   background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px;
   flex-shrink:0;
+  cursor:grab;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.category-horizontal:active{
+  cursor:grabbing;
+}
+.category-horizontal.dragging{
+  opacity:0.5;
+}
+.category-horizontal.drag-over{
+  border-color:var(--accent);
+  border-width:2px;
+  transform:scale(1.05);
 }
 .category-horizontal input[type="color"]{ 
   width:24px; height:24px; padding:0; border:none; background:none; cursor:pointer;
@@ -1869,7 +1882,63 @@ dialog textarea{ resize:vertical; }
     state.catOrder.forEach(cid=>{
       const c = state.categories[cid];
       const row = document.createElement("div");
-      row.className = "category-horizontal"; row.dataset.id = cid;
+      row.className = "category-horizontal"; 
+      row.dataset.id = cid;
+      row.draggable = true;
+      
+      // Drag start handler
+      row.addEventListener("dragstart", (e)=>{
+        e.dataTransfer.setData("application/x-category-id", cid);
+        e.dataTransfer.effectAllowed = "move";
+        row.classList.add("dragging");
+      });
+      
+      // Drag end handler
+      row.addEventListener("dragend", (e)=>{
+        row.classList.remove("dragging");
+        // Remove drag-over class from all categories
+        $$(".category-horizontal").forEach(el => el.classList.remove("drag-over"));
+      });
+      
+      // Drag over handler
+      row.addEventListener("dragover", (e)=>{
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        row.classList.add("drag-over");
+      });
+      
+      // Drag leave handler
+      row.addEventListener("dragleave", (e)=>{
+        row.classList.remove("drag-over");
+      });
+      
+      // Drop handler
+      row.addEventListener("drop", (e)=>{
+        e.preventDefault();
+        row.classList.remove("drag-over");
+        
+        const draggedId = e.dataTransfer.getData("application/x-category-id");
+        if(!draggedId || draggedId === cid) return;
+        
+        // Get current positions
+        const draggedIndex = state.catOrder.indexOf(draggedId);
+        const targetIndex = state.catOrder.indexOf(cid);
+        
+        if(draggedIndex === -1 || targetIndex === -1) return;
+        
+        // Remove dragged item from array
+        state.catOrder.splice(draggedIndex, 1);
+        
+        // Insert at new position
+        // After removing the dragged item, recalculate target index
+        const newTargetIndex = state.catOrder.indexOf(cid);
+        state.catOrder.splice(newTargetIndex + 1, 0, draggedId);
+        
+        pushHistory(); 
+        renderCategories(); 
+        saveToStorage();
+        toast("Category reordered","ok");
+      });
       
       const color = document.createElement("input"); 
       color.type="color"; 
@@ -1893,18 +1962,8 @@ dialog textarea{ resize:vertical; }
         pushHistory(); renderCategories();
       });
       del.setAttribute("aria-label", "Delete category");
-      const up = button("↑","small", ()=>{
-        const i = state.catOrder.indexOf(cid);
-        if(i>0){ [state.catOrder[i-1], state.catOrder[i]] = [state.catOrder[i], state.catOrder[i-1]]; renderCategories(); saveToStorage(); }
-      });
-      up.setAttribute("aria-label", "Move category up");
-      const down = button("↓","small", ()=>{
-        const i = state.catOrder.indexOf(cid);
-        if(i<state.catOrder.length-1){ [state.catOrder[i+1], state.catOrder[i]] = [state.catOrder[i], state.catOrder[i+1]]; renderCategories(); saveToStorage(); }
-      });
-      down.setAttribute("aria-label", "Move category down");
 
-      actionsInline.append(up, down, del);
+      actionsInline.append(del);
       row.append(color, name, actionsInline);
       catList.appendChild(row);
     });
