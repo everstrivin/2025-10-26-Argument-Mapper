@@ -747,8 +747,8 @@ dialog textarea{ resize:vertical; }
       <p style="margin: 8px 0; color: var(--muted); font-size: 14px;">How would you like to start your new project?</p>
       <div class="dialog-actions" style="flex-direction: column; gap: 12px;">
         <button id="btn-project-blank" class="primary" style="width: 100%;" value="blank">Start with Blank Project</button>
-        <button id="btn-project-copy-all" class="primary" style="width: 100%;" value="copy-all">Copy from Existing Project (All Data)</button>
-        <button id="btn-project-copy-sources" class="primary" style="width: 100%;" value="copy-sources">Copy from Existing Project (Sources Only)</button>
+        <button id="btn-project-copy-all" class="primary" style="width: 100%;" value="copy-all">Copy All Data</button>
+        <button id="btn-project-copy-sources" class="primary" style="width: 100%;" value="copy-sources">Copy Sources Only</button>
         <button value="cancel" style="width: 100%;">Cancel</button>
       </div>
     </form>
@@ -905,6 +905,52 @@ dialog textarea{ resize:vertical; }
     toast(`Loaded project: ${project.name}`, "ok");
   }
 
+  function createBlankState(){
+    // Create a minimal blank state with default categories and root node
+    const blankState = {
+      categories: {},
+      catOrder: [],
+      rootId: null,
+      nodes: {},
+      focusId: null,
+      inbox: [],
+      consumedChunkIds: {},
+      view: { panX: 0, panY: 0, zoom: 1 }
+    };
+    
+    // Add default categories
+    const defaults = [
+      ["Pro", "#22c55e"],
+      ["Con", "#ef4444"],
+      ["Fallacy", "#f59e0b"],
+      ["Deductive", "#3b82f6"],
+      ["Inductive", "#8b5cf6"],
+      ["Abductive", "#14b8a6"],
+    ];
+    defaults.forEach(([name, color])=>{
+      const id = uid();
+      blankState.categories[id] = {id, name, colorHex: color};
+      blankState.catOrder.push(id);
+    });
+    
+    // Add root node
+    const rootId = uid();
+    const root = { 
+      id: rootId, 
+      title: "Root", 
+      source: "", 
+      categoryId: blankState.catOrder[0], 
+      rating: 3, 
+      children: [], 
+      parentId: null 
+    };
+    blankState.rootId = rootId;
+    blankState.nodes[rootId] = root;
+    blankState.focusId = rootId;
+    
+    return blankState;
+  }
+
   function createProject(name, mode, sourceProjectId){
     if(!name || !name.trim()) return toast("Project name required","warn");
     
@@ -964,52 +1010,6 @@ dialog textarea{ resize:vertical; }
     renderProjects();
     renderAll();
     toast(`Created project: ${name}`, "ok");
-  }
-
-  function createBlankState(){
-    // Create a minimal blank state with default categories and root node
-    const blankState = {
-      categories: {},
-      catOrder: [],
-      rootId: null,
-      nodes: {},
-      focusId: null,
-      inbox: [],
-      consumedChunkIds: {},
-      view: { panX: 0, panY: 0, zoom: 1 }
-    };
-    
-    // Add default categories
-    const defaults = [
-      ["Pro", "#22c55e"],
-      ["Con", "#ef4444"],
-      ["Fallacy", "#f59e0b"],
-      ["Deductive", "#3b82f6"],
-      ["Inductive", "#8b5cf6"],
-      ["Abductive", "#14b8a6"],
-    ];
-    defaults.forEach(([name, color])=>{
-      const id = uid();
-      blankState.categories[id] = {id, name, colorHex: color};
-      blankState.catOrder.push(id);
-    });
-    
-    // Add root node
-    const rootId = uid();
-    const root = { 
-      id: rootId, 
-      title: "Root", 
-      source: "", 
-      categoryId: blankState.catOrder[0], 
-      rating: 3, 
-      children: [], 
-      parentId: null 
-    };
-    blankState.rootId = rootId;
-    blankState.nodes[rootId] = root;
-    blankState.focusId = rootId;
-    
-    return blankState;
   }
 
   function deleteProject(projectId){
@@ -1180,7 +1180,7 @@ dialog textarea{ resize:vertical; }
       dialog.showModal();
     } else {
       // Fallback for browsers without dialog support
-      alert("Your browser does not support <dialog>.");
+      toast("Your browser does not support modern dialogs", "warn");
     }
   }
 
