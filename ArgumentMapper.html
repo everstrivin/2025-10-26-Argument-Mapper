@@ -65,14 +65,23 @@ body {
   display:flex; align-items:center; gap:6px;
   background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px;
   flex-shrink:0;
-  cursor:grab;
   transition: opacity 0.2s ease, transform 0.2s ease;
-}
-.category-horizontal:active{
-  cursor:grabbing;
 }
 .category-horizontal.dragging{
   opacity:0.5;
+}
+.drag-handle{
+  display:flex; flex-direction:column; gap:2px; cursor:grab; padding:2px;
+  opacity:0.4; transition: opacity 0.2s ease;
+}
+.category-horizontal:hover .drag-handle{
+  opacity:0.7;
+}
+.drag-handle:active{
+  cursor:grabbing;
+}
+.drag-handle-line{
+  width:12px; height:2px; background:#64748b; border-radius:1px;
 }
 .category-drag-placeholder{
   width:4px;
@@ -2012,6 +2021,17 @@ dialog textarea{ resize:vertical; }
         toast("Category reordered","ok");
       });
       
+      // Create drag handle icon
+      const dragHandle = document.createElement("div");
+      dragHandle.className = "drag-handle";
+      dragHandle.setAttribute("aria-label", "Drag to reorder");
+      // Create three horizontal lines for the grip icon
+      for(let i = 0; i < 3; i++){
+        const line = document.createElement("div");
+        line.className = "drag-handle-line";
+        dragHandle.appendChild(line);
+      }
+      
       const color = document.createElement("input"); 
       color.type="color"; 
       color.value = c.colorHex;
@@ -2036,7 +2056,7 @@ dialog textarea{ resize:vertical; }
       del.setAttribute("aria-label", "Delete category");
 
       actionsInline.append(del);
-      row.append(color, name, actionsInline);
+      row.append(dragHandle, color, name, actionsInline);
       catList.appendChild(row);
     });
   }
