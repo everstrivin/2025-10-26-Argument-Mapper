@@ -283,8 +283,8 @@ dialog textarea{ resize:vertical; }
 
 .panel.minimized {
   grid-column: span 1;
-  min-width: 40px;
-  max-width: 40px;
+  min-width: 80px;
+  max-width: 80px;
   writing-mode: vertical-rl;
   text-orientation: mixed;
 }
@@ -328,31 +328,31 @@ dialog textarea{ resize:vertical; }
 
 /* Adjust grid when panels are minimized */
 .app[data-projects-minimized="true"] {
-  grid-template-columns: 40px 320px 1fr 360px;
+  grid-template-columns: 80px 320px 1fr 360px;
 }
 
 .app[data-inbox-minimized="true"] {
-  grid-template-columns: 280px 40px 1fr 360px;
+  grid-template-columns: 280px 80px 1fr 360px;
 }
 
 .app[data-tree-minimized="true"] {
-  grid-template-columns: 280px 320px 1fr 40px;
+  grid-template-columns: 280px 320px 1fr 80px;
 }
 
 .app[data-projects-minimized="true"][data-inbox-minimized="true"] {
-  grid-template-columns: 40px 40px 1fr 360px;
+  grid-template-columns: 80px 80px 1fr 360px;
 }
 
 .app[data-projects-minimized="true"][data-tree-minimized="true"] {
-  grid-template-columns: 40px 320px 1fr 40px;
+  grid-template-columns: 80px 320px 1fr 80px;
 }
 
 .app[data-inbox-minimized="true"][data-tree-minimized="true"] {
-  grid-template-columns: 280px 40px 1fr 40px;
+  grid-template-columns: 280px 80px 1fr 80px;
 }
 
 .app[data-projects-minimized="true"][data-inbox-minimized="true"][data-tree-minimized="true"] {
-  grid-template-columns: 40px 40px 1fr 40px;
+  grid-template-columns: 80px 80px 1fr 80px;
 }
   </style>
 </head>
@@ -433,7 +433,7 @@ dialog textarea{ resize:vertical; }
     <section class="panel right" id="tree-panel">
       <div class="tree-section">
         <h2>
-          <span>Focused Node</span>
+          <span>Tree View</span>
           <button class="toggle-panel-btn" id="toggle-tree" title="Minimize panel">▶</button>
         </h2>
         <div id="focus-path" class="focus-path"></div>
