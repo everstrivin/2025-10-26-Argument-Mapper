@@ -208,14 +208,32 @@ button.small{ padding:4px 8px; font-size:12px; }
 }
 
 .tooltip{
-  position:absolute;
-  background:#111827; color:#fff; padding:4px 8px; font-size:12px;
-  border-radius:8px; pointer-events:none; opacity:0; transform: translate(-50%, -120%);
-  white-space: normal;
-  max-width: 100px;
+  display: none; /* Disabled - using bottom text display instead */
+}
+
+/* Bottom text display for hover text */
+.hover-text-display{
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border-top: 2px solid #e2e8f0;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--ink);
+  min-height: 48px;
+  z-index: 1000; /* Highest z-order to appear above ring if dragged down */
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s ease;
+  box-shadow: 0 -4px 12px rgba(0,0,0,.08);
   word-wrap: break-word;
-  transition: opacity .08s ease;
-  box-shadow: 0 6px 20px rgba(0,0,0,.15);
+  overflow-wrap: break-word;
+}
+
+.hover-text-display.visible{
+  opacity: 1;
 }
 
 /* Right panel */
@@ -498,7 +516,7 @@ dialog textarea{ resize:vertical; }
           </g>
           <g id="viewport" transform="translate(0,0) scale(1)"></g>
         </svg>
-        <div id="tooltip" class="tooltip" role="tooltip" aria-hidden="true"></div>
+        <div id="hover-text-display" class="hover-text-display" role="status" aria-live="polite" aria-atomic="true"></div>
       </div>
     </section>
 
@@ -994,7 +1012,7 @@ dialog textarea{ resize:vertical; }
   const svg = $("#ring-svg");
   const viewport = $("#viewport");
   const panSurface = $("#pan-surface");
-  const tooltip = $("#tooltip");
+  const hoverTextDisplay = $("#hover-text-display");
   const zoomReadout = $("#zoom-level");
   let view = state.view;
 
@@ -1192,7 +1210,7 @@ dialog textarea{ resize:vertical; }
     }
   }
 
-  // ---------- Tooltip ----------
+  // ---------- Hover Text Display ----------
   let tooltipActiveId = null;
   let originalDepthGroupParent = null; // Track original position for restoration
   function addSegmentListeners(el){
@@ -1200,17 +1218,10 @@ dialog textarea{ resize:vertical; }
       const id = el.dataset.id;
       tooltipActiveId = id;
       const node = state.nodes[id];
-      tooltip.textContent = displayTitle(node);
-      tooltip.style.opacity = "1";
-      tooltip.setAttribute("aria-hidden", "false");
+      hoverTextDisplay.textContent = displayTitle(node);
+      hoverTextDisplay.classList.add("visible");
+      hoverTextDisplay.setAttribute("aria-hidden", "false");
       el.classList.add("hover");
-      
-      // Position tooltip above the center of the element, offset 400px to the left and 300px down
-      const rect = el.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      tooltip.style.left = (centerX - 400) + "px";
-      tooltip.style.top = (centerY + 300) + "px";
       
       // Bring element to front within its depth group
       const depthGroup = el.parentNode;
@@ -1228,8 +1239,8 @@ dialog textarea{ resize:vertical; }
     });
     el.addEventListener("mouseleave", ()=>{
       tooltipActiveId = null;
-      tooltip.style.opacity = "0";
-      tooltip.setAttribute("aria-hidden", "true");
+      hoverTextDisplay.classList.remove("visible");
+      hoverTextDisplay.setAttribute("aria-hidden", "true");
       el.classList.remove("hover");
       
       // Restore the depth group to its original position
