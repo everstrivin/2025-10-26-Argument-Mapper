@@ -1911,7 +1911,7 @@ dialog textarea{ resize:vertical; }
       row.addEventListener("dragleave", (e)=>{
         // Only remove drag-over if we're actually leaving the element
         // Check if the related target is not a child of this element
-        if(!row.contains(e.relatedTarget)){
+        if(!e.relatedTarget || !row.contains(e.relatedTarget)){
           row.classList.remove("drag-over");
         }
       });
