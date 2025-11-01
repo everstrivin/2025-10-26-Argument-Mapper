@@ -915,7 +915,8 @@ dialog textarea{ resize:vertical; }
       focusId: null,
       inbox: [],
       consumedChunkIds: {},
-      view: { panX: 0, panY: 0, zoom: 1 }
+      view: { panX: 0, panY: 0, zoom: 1 },
+      savedSources: []
     };
     
     // Add default categories
@@ -988,6 +989,17 @@ dialog textarea{ resize:vertical; }
       // Copy consumed chunks tracking
       if(sourceData.consumedChunkIds){
         projectData.consumedChunkIds = deepClone(sourceData.consumedChunkIds);
+      }
+      
+      // Extract and copy unique sources from nodes
+      if(sourceData.nodes){
+        const uniqueSources = new Set();
+        Object.values(sourceData.nodes).forEach(node => {
+          if(node.source && node.source.trim()){
+            uniqueSources.add(node.source.trim());
+          }
+        });
+        projectData.savedSources = Array.from(uniqueSources).sort();
       }
     } else {
       // Fallback to current state if mode is unrecognized or source is missing
@@ -1194,6 +1206,7 @@ dialog textarea{ resize:vertical; }
     inbox: [],
     consumedChunkIds: {},
     view: { panX: 0, panY: 0, zoom: 1 },
+    savedSources: [], // Track sources independently for "copy sources only" mode
   };
 
   function ensureDefaults(){
@@ -3039,6 +3052,7 @@ dialog textarea{ resize:vertical; }
       inbox: state.inbox,
       consumedChunkIds: state.consumedChunkIds,
       view: state.view,
+      savedSources: state.savedSources || [],
       _meta: internal ? { savedAt: now() } : undefined
     };
   }
@@ -3048,6 +3062,7 @@ dialog textarea{ resize:vertical; }
     });
     Object.assign(state, deepClone(obj));
     state.view = state.view || {panX:0,panY:0,zoom:1};
+    state.savedSources = state.savedSources || [];
     if(!opts.silent) toast("State loaded","ok");
     renderCategories();
   }
@@ -3067,11 +3082,23 @@ dialog textarea{ resize:vertical; }
 
   function getAllSources(){
     const sources = new Set();
+    
+    // Add sources from nodes
     Object.values(state.nodes).forEach(node => {
       if(node.source && node.source.trim()){
         sources.add(node.source.trim());
       }
     });
+    
+    // Add saved sources (for "copy sources only" mode)
+    if(state.savedSources && Array.isArray(state.savedSources)){
+      state.savedSources.forEach(source => {
+        if(source && source.trim()){
+          sources.add(source.trim());
+        }
+      });
+    }
+    
     return Array.from(sources).sort();
   }
 
