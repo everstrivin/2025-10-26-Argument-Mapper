@@ -3278,6 +3278,7 @@ dialog textarea{ resize:vertical; }
 
   // ---------- Import / Export ----------
   let importedProjectsData = null;
+  const IMPORTED_SUFFIX = " (imported)";
   
   $("#btn-export").addEventListener("click", ()=>{
     // Show export dialog to allow project selection
@@ -3344,6 +3345,9 @@ dialog textarea{ resize:vertical; }
     const checkboxes = $$("input[type='checkbox']", $("#export-project-list"));
     const allChecked = checkboxes.every(cb => cb.checked);
     checkboxes.forEach(cb => cb.checked = !allChecked);
+    
+    // Update button text
+    $("#btn-select-all-projects").textContent = allChecked ? "Select All" : "Deselect All";
   });
   
   $("#btn-export-selected-projects").addEventListener("click", (e)=>{
@@ -3499,7 +3503,7 @@ dialog textarea{ resize:vertical; }
       
       projects[newId] = {
         id: newId,
-        name: projectData.name + " (imported)",
+        name: projectData.name + IMPORTED_SUFFIX,
         created: now(),
         lastModified: now(),
         data: projectData.data || createBlankState(),
@@ -3554,7 +3558,7 @@ dialog textarea{ resize:vertical; }
       
       projects[newId] = {
         id: newId,
-        name: projectData.name + " (imported)",
+        name: projectData.name + IMPORTED_SUFFIX,
         created: now(),
         lastModified: now(),
         data: projectData.data || createBlankState(),
