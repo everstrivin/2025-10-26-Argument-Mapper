@@ -140,6 +140,7 @@ body {
   display:flex; justify-content:space-between; align-items:center; gap:8px;
   cursor:pointer; transition: all 0.15s ease;
   box-sizing: border-box;
+  position: relative;
 }
 .project-item:hover{ background:#f1f5f9; border-color:#cbd5e1; }
 .project-item.active{ background:#eef2ff; border-color:var(--accent); border-width:2px; }
@@ -149,6 +150,10 @@ body {
   background:#fee; border-color:#fcc; color:#c00;
 }
 .project-item:hover button.delete-project{ opacity:1; }
+.project-item button.expand-project{
+  flex-shrink: 0;
+  min-width: 20px;
+}
 .project-list-empty{ 
   padding:20px; text-align:center; color:var(--muted); font-size:13px; 
 }
@@ -768,6 +773,43 @@ dialog textarea{ resize:vertical; }
     </form>
   </dialog>
 
+  <dialog id="export-project-dialog">
+    <form method="dialog" id="export-project-form">
+      <h3>Export Projects</h3>
+      <p style="margin: 8px 0; color: var(--muted); font-size: 14px;">Select projects to export:</p>
+      <div id="export-project-list" style="max-height: 400px; overflow-y: auto; margin: 12px 0;">
+        <!-- Checkboxes will be populated here -->
+      </div>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button id="btn-select-all-projects" type="button">Select All</button>
+        <button id="btn-export-selected-projects" class="primary" value="export">Export Selected</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="import-project-dialog">
+    <form method="dialog" id="import-project-form">
+      <h3>Import Projects</h3>
+      <p style="margin: 8px 0; color: var(--muted); font-size: 14px;">Choose where to import:</p>
+      <label style="margin-top: 12px;">
+        <input type="radio" name="import-location" value="root" checked />
+        Import as root project(s)
+      </label>
+      <label style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+        <input type="radio" name="import-location" value="child" />
+        Import as child of:
+        <select id="import-parent-select" style="flex: 1; padding: 6px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <option value="">-- Select Parent Project --</option>
+        </select>
+      </label>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button id="btn-confirm-import" class="primary" value="import">Import</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast-container" aria-live="polite"></div>
 
   <script>
@@ -1011,7 +1053,10 @@ dialog textarea{ resize:vertical; }
       name: name.trim(),
       created: now(),
       lastModified: now(),
-      data: projectData
+      data: projectData,
+      parentId: null,
+      children: [],
+      collapsed: false
     };
     
     // Load the new project
@@ -1026,10 +1071,34 @@ dialog textarea{ resize:vertical; }
 
   function deleteProject(projectId){
     if(!projects[projectId]) return;
-    const projectName = projects[projectId].name;
+    const project = projects[projectId];
+    const projectName = project.name;
     
-    if(!confirm(`Delete project "${projectName}"? This cannot be undone.`)) return;
+    // Check if project has children
+    const hasChildren = project.children && project.children.length > 0;
     
+    let confirmMsg = `Delete project "${projectName}"? This cannot be undone.`;
+    if(hasChildren) {
+      confirmMsg = `Delete project "${projectName}" and all its ${project.children.length} child project(s)? This cannot be undone.`;
+    }
+    
+    if(!confirm(confirmMsg)) return;
+    
+    // Recursively delete children
+    if(hasChildren) {
+      const childrenToDelete = [...project.children]; // Copy array to avoid mutation during iteration
+      childrenToDelete.forEach(childId => {
+        deleteProjectRecursive(childId);
+      });
+    }
+    
+    // Remove from parent's children array if it has a parent
+    if(project.parentId && projects[project.parentId]) {
+      const parent = projects[project.parentId];
+      parent.children = parent.children.filter(id => id !== projectId);
+    }
+    
+    // Delete the project itself
     delete projects[projectId];
     
     // If deleting current project, clear current project ID
@@ -1040,6 +1109,27 @@ dialog textarea{ resize:vertical; }
     saveProjects();
     renderProjects();
     toast(`Deleted project: ${projectName}`, "ok");
+  }
+  
+  function deleteProjectRecursive(projectId) {
+    if(!projects[projectId]) return;
+    const project = projects[projectId];
+    
+    // Recursively delete children first
+    if(project.children && project.children.length > 0) {
+      const childrenToDelete = [...project.children];
+      childrenToDelete.forEach(childId => {
+        deleteProjectRecursive(childId);
+      });
+    }
+    
+    // If deleting current project, clear current project ID
+    if(currentProjectId === projectId){
+      setCurrentProjectId(null);
+    }
+    
+    // Delete the project
+    delete projects[projectId];
   }
 
   function renderProjects(){
@@ -1052,19 +1142,60 @@ dialog textarea{ resize:vertical; }
       return;
     }
     
-    // Sort by last modified (most recent first)
-    projectIds.sort((a,b) => projects[b].lastModified - projects[a].lastModified);
-    
+    // Ensure all projects have the necessary fields
     projectIds.forEach(id => {
+      if(!projects[id].parentId) projects[id].parentId = null;
+      if(!projects[id].children) projects[id].children = [];
+      if(projects[id].collapsed === undefined) projects[id].collapsed = false;
+    });
+    
+    // Get root projects (those without parents)
+    const rootProjects = projectIds.filter(id => !projects[id].parentId);
+    
+    // Sort root projects by last modified (most recent first)
+    rootProjects.sort((a,b) => projects[b].lastModified - projects[a].lastModified);
+    
+    // Recursive function to render a project and its children
+    function renderProjectItem(id, depth = 0) {
       const project = projects[id];
       const item = document.createElement("div");
       item.className = "project-item";
+      item.dataset.id = id;
+      item.draggable = true;
       if(id === currentProjectId) item.classList.add("active");
+      
+      // Add indentation based on depth
+      item.style.marginLeft = (depth * 20) + "px";
+      
+      // Add expand/collapse button for parent projects
+      const hasChildren = project.children && project.children.length > 0;
+      if(hasChildren) {
+        const expandBtn = document.createElement("button");
+        expandBtn.className = "expand-project";
+        expandBtn.textContent = project.collapsed ? "▶" : "▼";
+        expandBtn.style.cssText = "background:none; border:none; padding:4px; cursor:pointer; font-size:10px;";
+        expandBtn.onclick = (e) => {
+          e.stopPropagation();
+          project.collapsed = !project.collapsed;
+          saveProjects();
+          renderProjects();
+        };
+        item.appendChild(expandBtn);
+      } else {
+        // Add spacer to align non-parent projects
+        const spacer = document.createElement("span");
+        spacer.style.width = "20px";
+        spacer.style.display = "inline-block";
+        item.appendChild(spacer);
+      }
       
       const nameSpan = document.createElement("span");
       nameSpan.className = "name";
       nameSpan.textContent = project.name;
       nameSpan.title = project.name;
+      if(hasChildren) {
+        nameSpan.style.fontWeight = "600";
+      }
       
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "delete-project";
@@ -1079,8 +1210,140 @@ dialog textarea{ resize:vertical; }
       
       item.onclick = () => loadProject(id);
       
+      // Drag and drop handlers
+      item.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("application/x-project-id", id);
+        e.dataTransfer.effectAllowed = "move";
+        item.style.opacity = "0.5";
+      });
+      
+      item.addEventListener("dragend", (e) => {
+        item.style.opacity = "1";
+      });
+      
+      item.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        item.style.borderTop = "2px solid var(--accent)";
+      });
+      
+      item.addEventListener("dragleave", (e) => {
+        item.style.borderTop = "";
+      });
+      
+      item.addEventListener("drop", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        item.style.borderTop = "";
+        
+        const draggedId = e.dataTransfer.getData("application/x-project-id");
+        if(!draggedId || draggedId === id) return;
+        
+        const draggedProject = projects[draggedId];
+        const targetProject = projects[id];
+        
+        // Check if trying to make a project its own descendant
+        if(isProjectDescendant(id, draggedId)) {
+          toast("Cannot move a project into its own descendant", "warn");
+          return;
+        }
+        
+        // Ask user if they want to move as sibling or child
+        const action = confirm(
+          `Move "${draggedProject.name}" as a child of "${targetProject.name}"?\n\n` +
+          `Click OK to make it a child, or Cancel to make it a sibling.`
+        );
+        
+        if(action) {
+          // Move as child
+          moveProjectAsChild(draggedId, id);
+        } else {
+          // Move as sibling
+          moveProjectAsSibling(draggedId, id);
+        }
+        
+        saveProjects();
+        renderProjects();
+        toast("Project moved", "ok");
+      });
+      
       projectList.appendChild(item);
-    });
+      
+      // Render children if not collapsed
+      if(hasChildren && !project.collapsed) {
+        // Sort children by last modified
+        const sortedChildren = [...project.children].sort((a,b) => 
+          projects[b].lastModified - projects[a].lastModified
+        );
+        sortedChildren.forEach(childId => {
+          if(projects[childId]) {
+            renderProjectItem(childId, depth + 1);
+          }
+        });
+      }
+    }
+    
+    // Render all root projects and their children
+    rootProjects.forEach(id => renderProjectItem(id, 0));
+  }
+  
+  function isProjectDescendant(projectId, potentialAncestorId) {
+    if(!projectId || !potentialAncestorId) return false;
+    const project = projects[projectId];
+    if(!project || !project.children) return false;
+    
+    for(const childId of project.children) {
+      if(childId === potentialAncestorId) return true;
+      if(isProjectDescendant(childId, potentialAncestorId)) return true;
+    }
+    return false;
+  }
+  
+  function moveProjectAsChild(projectId, newParentId) {
+    const project = projects[projectId];
+    const newParent = projects[newParentId];
+    
+    // Remove from old parent's children array
+    if(project.parentId) {
+      const oldParent = projects[project.parentId];
+      if(oldParent && oldParent.children) {
+        oldParent.children = oldParent.children.filter(id => id !== projectId);
+      }
+    }
+    
+    // Add to new parent's children array
+    if(!newParent.children) newParent.children = [];
+    if(!newParent.children.includes(projectId)) {
+      newParent.children.push(projectId);
+    }
+    
+    // Update project's parentId
+    project.parentId = newParentId;
+  }
+  
+  function moveProjectAsSibling(projectId, siblingId) {
+    const project = projects[projectId];
+    const sibling = projects[siblingId];
+    
+    // Remove from old parent's children array
+    if(project.parentId) {
+      const oldParent = projects[project.parentId];
+      if(oldParent && oldParent.children) {
+        oldParent.children = oldParent.children.filter(id => id !== projectId);
+      }
+    }
+    
+    // Set same parent as sibling
+    project.parentId = sibling.parentId;
+    
+    // Add to parent's children array (after the sibling)
+    if(sibling.parentId) {
+      const parent = projects[sibling.parentId];
+      if(parent && parent.children) {
+        const siblingIndex = parent.children.indexOf(siblingId);
+        parent.children.splice(siblingIndex + 1, 0, projectId);
+      }
+    }
   }
 
   // Project UI handlers
@@ -3014,15 +3277,139 @@ dialog textarea{ resize:vertical; }
   });
 
   // ---------- Import / Export ----------
+  let importedProjectsData = null;
+  const IMPORTED_SUFFIX = " (imported)";
+  
   $("#btn-export").addEventListener("click", ()=>{
-    const blob = new Blob([ JSON.stringify(exportState(false), null, 2) ], {type: "application/json"});
+    // Show export dialog to allow project selection
+    const exportDialog = $("#export-project-dialog");
+    const exportList = $("#export-project-list");
+    
+    // Populate project checkboxes
+    exportList.innerHTML = "";
+    
+    const projectIds = Object.keys(projects);
+    if(projectIds.length === 0) {
+      toast("No projects to export", "warn");
+      return;
+    }
+    
+    // Build hierarchical structure for export selection
+    function renderExportProjectCheckbox(projectId, depth = 0) {
+      const project = projects[projectId];
+      const wrapper = document.createElement("div");
+      wrapper.style.cssText = `padding: 6px; margin-left: ${depth * 20}px;`;
+      
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.id = `export-cb-${projectId}`;
+      checkbox.value = projectId;
+      checkbox.checked = true;
+      
+      const label = document.createElement("label");
+      label.htmlFor = checkbox.id;
+      label.textContent = project.name;
+      label.style.cssText = "margin-left: 8px; cursor: pointer;";
+      if(project.children && project.children.length > 0) {
+        label.style.fontWeight = "600";
+      }
+      
+      wrapper.appendChild(checkbox);
+      wrapper.appendChild(label);
+      exportList.appendChild(wrapper);
+      
+      // Render children
+      if(project.children && project.children.length > 0) {
+        project.children.forEach(childId => {
+          if(projects[childId]) {
+            renderExportProjectCheckbox(childId, depth + 1);
+          }
+        });
+      }
+    }
+    
+    // Get root projects
+    const rootProjects = projectIds.filter(id => !projects[id].parentId);
+    rootProjects.sort((a,b) => projects[b].lastModified - projects[a].lastModified);
+    rootProjects.forEach(id => renderExportProjectCheckbox(id, 0));
+    
+    if(typeof exportDialog.showModal === "function"){
+      exportDialog.showModal();
+    } else {
+      // Fallback: export all projects
+      exportAllProjects();
+    }
+  });
+  
+  $("#btn-select-all-projects").addEventListener("click", ()=>{
+    const checkboxes = $$("input[type='checkbox']", $("#export-project-list"));
+    const allChecked = checkboxes.every(cb => cb.checked);
+    checkboxes.forEach(cb => cb.checked = !allChecked);
+    
+    // Update button text
+    $("#btn-select-all-projects").textContent = allChecked ? "Select All" : "Deselect All";
+  });
+  
+  $("#btn-export-selected-projects").addEventListener("click", (e)=>{
+    e.preventDefault();
+    const checkboxes = $$("input[type='checkbox']:checked", $("#export-project-list"));
+    const selectedIds = checkboxes.map(cb => cb.value);
+    
+    if(selectedIds.length === 0) {
+      toast("No projects selected", "warn");
+      return;
+    }
+    
+    // Build export data with selected projects and their descendants
+    const exportData = {
+      version: "2.0",
+      exportDate: new Date().toISOString(),
+      projects: {}
+    };
+    
+    function includeProjectAndDescendants(projectId) {
+      if(!projects[projectId]) return;
+      exportData.projects[projectId] = { ...projects[projectId] };
+      
+      // Include children
+      if(projects[projectId].children) {
+        projects[projectId].children.forEach(childId => {
+          includeProjectAndDescendants(childId);
+        });
+      }
+    }
+    
+    selectedIds.forEach(id => includeProjectAndDescendants(id));
+    
+    const blob = new Blob([ JSON.stringify(exportData, null, 2) ], {type: "application/json"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `argument-rings-${new Date().toISOString().slice(0,19)}.json`;
+    a.download = `argument-rings-projects-${new Date().toISOString().slice(0,19)}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
+    
+    $("#export-project-dialog").close();
+    toast(`Exported ${selectedIds.length} project(s)`, "ok");
   });
+  
+  function exportAllProjects() {
+    const exportData = {
+      version: "2.0",
+      exportDate: new Date().toISOString(),
+      projects: { ...projects }
+    };
+    
+    const blob = new Blob([ JSON.stringify(exportData, null, 2) ], {type: "application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `argument-rings-projects-${new Date().toISOString().slice(0,19)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast("Exported all projects", "ok");
+  }
+  
   $("#btn-import").addEventListener("click", ()=> $("#file-input").click());
+  
   $("#file-input").addEventListener("change", (e)=>{
     const f = e.target.files[0];
     if(!f) return;
@@ -3030,10 +3417,21 @@ dialog textarea{ resize:vertical; }
     reader.onload = ()=> {
       try{
         const obj = JSON.parse(reader.result);
-        importState(obj);
-        pushHistory();
-        renderAll();
-        toast("Imported","ok");
+        
+        // Check if this is a project export (version 2.0) or old state export
+        if(obj.version === "2.0" && obj.projects) {
+          // New project export format
+          importedProjectsData = obj.projects;
+          showImportDialog();
+        } else if(obj.categories && obj.nodes) {
+          // Old state export format - import directly
+          importState(obj);
+          pushHistory();
+          renderAll();
+          toast("Imported","ok");
+        } else {
+          toast("Invalid or unsupported JSON format","err");
+        }
       }catch(err){
         toast("Invalid JSON","err");
       }
@@ -3041,6 +3439,157 @@ dialog textarea{ resize:vertical; }
     reader.readAsText(f);
     e.target.value="";
   });
+  
+  function showImportDialog() {
+    const importDialog = $("#import-project-dialog");
+    const parentSelect = $("#import-parent-select");
+    
+    // Populate parent project dropdown
+    parentSelect.innerHTML = '<option value="">-- Select Parent Project --</option>';
+    
+    function addProjectOption(projectId, depth = 0) {
+      const project = projects[projectId];
+      const option = document.createElement("option");
+      option.value = projectId;
+      option.textContent = "  ".repeat(depth) + project.name;
+      parentSelect.appendChild(option);
+      
+      // Add children
+      if(project.children && project.children.length > 0) {
+        project.children.forEach(childId => {
+          if(projects[childId]) {
+            addProjectOption(childId, depth + 1);
+          }
+        });
+      }
+    }
+    
+    const rootProjects = Object.keys(projects).filter(id => !projects[id].parentId);
+    rootProjects.sort((a,b) => projects[b].lastModified - projects[a].lastModified);
+    rootProjects.forEach(id => addProjectOption(id, 0));
+    
+    if(typeof importDialog.showModal === "function"){
+      importDialog.showModal();
+    } else {
+      // Fallback: import as root
+      importProjectsAsRoot();
+    }
+  }
+  
+  $("#btn-confirm-import").addEventListener("click", (e)=>{
+    e.preventDefault();
+    
+    const importLocation = $("input[name='import-location']:checked").value;
+    const parentId = $("#import-parent-select").value;
+    
+    if(importLocation === "child" && !parentId) {
+      toast("Please select a parent project", "warn");
+      return;
+    }
+    
+    if(!importedProjectsData) {
+      toast("No data to import", "warn");
+      return;
+    }
+    
+    // Import projects
+    let importedCount = 0;
+    const idMapping = {}; // Map old IDs to new IDs to preserve parent-child relationships
+    
+    // First pass: create all projects with new IDs
+    Object.entries(importedProjectsData).forEach(([oldId, projectData]) => {
+      const newId = uid();
+      idMapping[oldId] = newId;
+      
+      projects[newId] = {
+        id: newId,
+        name: projectData.name + IMPORTED_SUFFIX,
+        created: now(),
+        lastModified: now(),
+        data: projectData.data || createBlankState(),
+        parentId: null, // Will be set in second pass
+        children: [], // Will be set in second pass
+        collapsed: false
+      };
+      importedCount++;
+    });
+    
+    // Second pass: restore parent-child relationships with new IDs
+    Object.entries(importedProjectsData).forEach(([oldId, projectData]) => {
+      const newId = idMapping[oldId];
+      const newProject = projects[newId];
+      
+      // Set parent
+      if(importLocation === "child" && !projectData.parentId) {
+        // Only root projects from import get the selected parent
+        newProject.parentId = parentId;
+        if(!projects[parentId].children) projects[parentId].children = [];
+        projects[parentId].children.push(newId);
+      } else if(projectData.parentId && idMapping[projectData.parentId]) {
+        // Restore original parent-child relationship
+        newProject.parentId = idMapping[projectData.parentId];
+      }
+      
+      // Set children
+      if(projectData.children && Array.isArray(projectData.children)) {
+        newProject.children = projectData.children
+          .map(oldChildId => idMapping[oldChildId])
+          .filter(Boolean);
+      }
+    });
+    
+    $("#import-project-dialog").close();
+    importedProjectsData = null;
+    saveProjects();
+    renderProjects();
+    toast(`Imported ${importedCount} project(s)`, "ok");
+  });
+  
+  function importProjectsAsRoot() {
+    if(!importedProjectsData) return;
+    
+    let importedCount = 0;
+    const idMapping = {};
+    
+    // First pass: create all projects with new IDs
+    Object.entries(importedProjectsData).forEach(([oldId, projectData]) => {
+      const newId = uid();
+      idMapping[oldId] = newId;
+      
+      projects[newId] = {
+        id: newId,
+        name: projectData.name + IMPORTED_SUFFIX,
+        created: now(),
+        lastModified: now(),
+        data: projectData.data || createBlankState(),
+        parentId: null,
+        children: [],
+        collapsed: false
+      };
+      importedCount++;
+    });
+    
+    // Second pass: restore parent-child relationships with new IDs
+    Object.entries(importedProjectsData).forEach(([oldId, projectData]) => {
+      const newId = idMapping[oldId];
+      const newProject = projects[newId];
+      
+      if(projectData.parentId && idMapping[projectData.parentId]) {
+        newProject.parentId = idMapping[projectData.parentId];
+      }
+      
+      if(projectData.children && Array.isArray(projectData.children)) {
+        newProject.children = projectData.children
+          .map(oldChildId => idMapping[oldChildId])
+          .filter(Boolean);
+      }
+    });
+    
+    importedProjectsData = null;
+    saveProjects();
+    renderProjects();
+    toast(`Imported ${importedCount} project(s)`, "ok");
+  }
 
   function exportState(internal=false){
     return {
